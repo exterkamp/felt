@@ -120,6 +120,8 @@ export class Board {
   private readonly cleanup: (() => void)[] = [];
   /** Frames drawn so far. */
   frames = 0;
+  /** Run before every frame is drawn - work batched up to happen once a frame. */
+  private readonly beforeFrame: (() => void)[] = [];
 
   constructor(options: BoardOptions) {
     const parent = typeof options.parent === 'string'
@@ -378,6 +380,11 @@ export class Board {
     });
   }
 
+  /** Registers work to run once before each drawn frame. */
+  beforeRender(run: () => void): void {
+    this.beforeFrame.push(run);
+  }
+
   // --- events --------------------------------------------------------------
 
   on(event: 'update', handler: (time: number, delta: number) => void): this;
@@ -452,6 +459,9 @@ export class Board {
     const updating = (this.handlers.get('update')?.size ?? 0) > 0;
     if (updating) this.emit('update', this.time, delta);
     const tweening = this.tweens.update(delta);
+    // Before the dirty check, so that what this paints lands in this frame
+    // rather than asking for another one.
+    for (const run of this.beforeFrame) run();
 
     if (this.dirty) {
       this.dirty = false;
@@ -468,6 +478,7 @@ export class Board {
 
   /** Draws now, whatever the loop thinks. */
   render(): void {
+    for (const run of this.beforeFrame) run();
     this.sort();
     // A card buried under an identical one casts no shadow; see Node.covered.
     let above: Node | undefined;

@@ -102,6 +102,9 @@ export class Renderer {
   /** Draw calls in the last frame, for anyone measuring. */
   drawCalls = 0;
   instanceCount = 0;
+  /** Pictures uploaded, and how many pixels that was, since the start. */
+  uploads = 0;
+  uploadedPixels = 0;
   readonly maxTextureLayers: number;
 
   constructor(readonly canvas: HTMLCanvasElement, readonly atlas: Atlas,
@@ -151,6 +154,7 @@ export class Renderer {
     }
     this.pointInstances(0);
     gl.bindVertexArray(null);
+    atlas.sink = (page, x, y, w, h, pixels) => this.upload(page, x, y, w, h, pixels);
   }
 
   /** Points the eight instance attributes at the run starting at `first`. */
@@ -195,46 +199,56 @@ export class Renderer {
     gl.deleteVertexArray(buffers.vao);
   }
 
-  /** Brings the GPU's copy of the atlas up to date: new pages, dirty rects. */
-  private syncAtlas(): void {
+  /**
+   * Makes sure the texture has a layer for every atlas page.
+   *
+   * Grown by doubling, and the old layers are copied across on the GPU - the
+   * pixels exist nowhere else, which is the point: nothing on the CPU side
+   * holds a 16MB page per layer, and nothing is ever re-uploaded whole.
+   */
+  private ensureLayers(pages: number): void {
     const gl = this.gl;
-    const pages = this.atlas.pages.length;
+    if (this.texture && pages <= this.textureLayers) return;
     const size = this.atlas.size;
-    let full = false;
-    if (!this.texture || pages > this.textureLayers) {
-      // Room for a few more than needed, so a new deck is not a reallocation.
-      const layers = Math.min(this.maxTextureLayers, Math.max(4, pages * 2));
-      if (this.texture) gl.deleteTexture(this.texture);
-      this.texture = gl.createTexture();
-      gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.texture);
-      gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA8, size, size, layers);
-      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-      this.textureLayers = layers;
-      full = true;
+    const layers = Math.min(this.maxTextureLayers, Math.max(4, pages * 2, this.textureLayers * 2));
+    const next = gl.createTexture()!;
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, next);
+    gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA8, size, size, layers);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    if (this.texture) {
+      const fb = gl.createFramebuffer();
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fb);
+      for (let layer = 0; layer < this.textureLayers; layer++) {
+        gl.framebufferTextureLayer(gl.READ_FRAMEBUFFER, gl.COLOR_ATTACHMENT0, this.texture, 0, layer);
+        gl.copyTexSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, layer, 0, 0, size, size);
+      }
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+      gl.deleteFramebuffer(fb);
+      gl.deleteTexture(this.texture);
     }
+    // A new texture needs no clearing: WebGL hands it over zeroed.
+    this.texture = next;
+    this.textureLayers = layers;
+  }
+
+  /** The atlas's sink: one freshly painted picture, uploaded now. */
+  private upload(page: number, x: number, y: number, width: number, height: number,
+    pixels: Uint8Array): void {
+    const gl = this.gl;
+    this.ensureLayers(Math.max(page + 1, this.atlas.pages.length));
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.texture);
-    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
-    for (let i = 0; i < pages; i++) {
-      const dirty = this.atlas.takeDirty(i);
-      const rect = full ? { x0: 0, y0: 0, x1: size, y1: size } : dirty;
-      if (!rect) continue;
-      const w = rect.x1 - rect.x0;
-      const h = rect.y1 - rect.y0;
-      if (w <= 0 || h <= 0) continue;
-      gl.pixelStorei(gl.UNPACK_ROW_LENGTH, size);
-      gl.pixelStorei(gl.UNPACK_SKIP_PIXELS, rect.x0);
-      gl.pixelStorei(gl.UNPACK_SKIP_ROWS, rect.y0);
-      gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, rect.x0, rect.y0, i, w, h, 1,
-        gl.RGBA, gl.UNSIGNED_BYTE, this.atlas.pages[i].canvas as TexImageSource);
-    }
-    gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 0);
-    gl.pixelStorei(gl.UNPACK_SKIP_PIXELS, 0);
-    gl.pixelStorei(gl.UNPACK_SKIP_ROWS, 0);
+    // Already premultiplied by the atlas.
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
+    gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, x, y, page, width, height, 1,
+      gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+    this.uploads++;
+    this.uploadedPixels += width * height;
   }
 
   private setProjection(u: Uniforms, camera: FrameCamera, distance = camera.distance): void {
@@ -250,7 +264,9 @@ export class Renderer {
   frame(items: readonly DrawItem[], camera: FrameCamera, background: [number, number, number, number]): void {
     const gl = this.gl;
     this.camera = camera;
-    this.syncAtlas();
+    this.ensureLayers(this.atlas.pages.length);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.texture);
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
     gl.clearColor(background[0] * background[3], background[1] * background[3],
       background[2] * background[3], background[3]);

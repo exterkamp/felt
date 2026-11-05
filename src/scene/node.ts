@@ -63,8 +63,16 @@ export abstract class Node implements InstanceItem {
   /** Anything a game wants to hang off it. */
   data: Record<string, unknown> = {};
 
-  constructor(readonly board: NodeHost) {
-    board.attach(this);
+  /**
+   * Not on the board yet: a subclass calls `attach()` as the last line of its
+   * constructor. Attaching here, first, meant a constructor that threw half
+   * way left a half-built node in the draw list, breaking every frame after.
+   */
+  constructor(readonly board: NodeHost) {}
+
+  /** Puts it on the board. Once, at the end of a subclass's constructor. */
+  protected attach(): void {
+    this.board.attach(this);
   }
 
   /** Its size before scaling, in board units. */

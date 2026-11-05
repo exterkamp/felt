@@ -49,7 +49,8 @@ export class Sprite extends Node {
     this._y = options.y ?? 0;
     this._angle = options.angle ?? 0;
     this._alpha = options.alpha ?? 1;
-    if (options.depth !== undefined) this.depth = options.depth;
+    this._depth = options.depth ?? 0;
+    this.attach();
   }
 
   get width(): number { return this._width; }

@@ -142,12 +142,12 @@ export class CardSprite<S extends string = Suit> extends Node {
     const atlas = board.atlas;
     let face = atlas.acquire(faceKey);
     if (!face) {
-      face = atlas.obtain(faceKey, pxW, pxH, () => { /* tracked below */ });
+      face = atlas.reserve(faceKey, pxW, pxH);
       art.paintTracked(face, (lookup) => this.facePainter(lookup, courtKey, art));
     }
     let back = atlas.acquire(backKey);
     if (!back) {
-      back = atlas.obtain(backKey, pxW, pxH, () => { /* tracked below */ });
+      back = atlas.reserve(backKey, pxW, pxH);
       const { backColor: color } = this.spec;
       art.paintTracked(back, (lookup) => (pen, w, h) => {
         pen.fillStyle = colorCss(color);
@@ -158,6 +158,7 @@ export class CardSprite<S extends string = Suit> extends Node {
     }
     this.faceRegion = face;
     this.backRegion = back;
+    this.attach();
   }
 
   get width(): number { return this.metrics.width; }
@@ -285,7 +286,7 @@ export class CardSprite<S extends string = Suit> extends Node {
         // frame one, the rule round it - drawn over the art, where a printed
         // rule is, or the bottom edge rounds away to nothing.
         const rect = courtArtRect(metrics, { width: portrait.width, height: portrait.height });
-        pen.drawImage(portrait, rect.x - rect.width / 2, rect.y - rect.height / 2, rect.width, rect.height);
+        art.blit(pen, portrait, rect.x - rect.width / 2, rect.y - rect.height / 2, rect.width, rect.height);
         if (metrics.court.cut === 'full') {
           pen.strokeStyle = colorCss(courtInk);
           pen.lineWidth = Math.max(1, metrics.width / 90);
@@ -298,13 +299,13 @@ export class CardSprite<S extends string = Suit> extends Node {
         const places = pipPlaces(metrics, card.rank as Rank);
         if (!places.length) {
           const s = metrics.pip.size;
-          pen.drawImage(glyph, -s / 2, metrics.pip.y - s / 2, s, s);
+          art.blit(pen, glyph, -s / 2, metrics.pip.y - s / 2, s, s);
         } else {
-          for (const place of places) drawGlyph(pen, glyph, place.x, place.y, place.size, place.flip);
+          for (const place of places) drawGlyph(art, pen, glyph, place.x, place.y, place.size, place.flip);
         }
       }
-      this.corner(pen, glyph, false);
-      if (metrics.corners === 2) this.corner(pen, glyph, true);
+      this.corner(art, pen, glyph, false);
+      if (metrics.corners === 2) this.corner(art, pen, glyph, true);
     };
   }
 
@@ -313,39 +314,37 @@ export class CardSprite<S extends string = Suit> extends Node {
    * is the same drawing rotated half a turn about the card's centre, so the
    * two corners cannot drift apart.
    */
-  private corner(pen: Parameters<Painter>[0], glyph: CanvasImageSource | undefined, turned: boolean): void {
+  private corner(art: CardArt, pen: Parameters<Painter>[0], glyph: ReturnType<CardArt['get']>,
+    turned: boolean): void {
     const { index } = this.metrics;
     const rank = this.card.rank;
     pen.save();
     if (turned) pen.rotate(Math.PI);
-    pen.font = `bold ${index.fontSize}px ${CARD_INDEX_FONT}`;
-    pen.fillStyle = colorCss(this.spec.ink);
-    pen.textBaseline = 'middle';
-    pen.textAlign = 'left';
-    pen.fillText(rank, index.x, index.y);
+    art.text(pen, rank, `bold ${index.fontSize}px ${CARD_INDEX_FONT}`, index.fontSize,
+      colorCss(this.spec.ink), index.x, index.y);
     const width = rankWidth(rank, index.fontSize);
     if (glyph) {
       const s = index.suitSize;
       if (index.stacked) {
-        pen.drawImage(glyph, index.x + width / 2 - s / 2, index.suitY - s / 2, s, s);
+        art.blit(pen, glyph, index.x + width / 2 - s / 2, index.suitY - s / 2, s, s);
       } else {
-        pen.drawImage(glyph, index.x + width + index.gap, index.y - s / 2, s, s);
+        art.blit(pen, glyph, index.x + width + index.gap, index.y - s / 2, s, s);
       }
     }
     pen.restore();
   }
 }
 
-function drawGlyph(pen: Parameters<Painter>[0], glyph: CanvasImageSource,
+function drawGlyph(art: CardArt, pen: Parameters<Painter>[0], glyph: NonNullable<ReturnType<CardArt['get']>>,
   x: number, y: number, size: number, flip: boolean): void {
   if (!flip) {
-    pen.drawImage(glyph, x - size / 2, y - size / 2, size, size);
+    art.blit(pen, glyph, x - size / 2, y - size / 2, size, size);
     return;
   }
   pen.save();
   pen.translate(x, y);
   pen.rotate(Math.PI);
-  pen.drawImage(glyph, -size / 2, -size / 2, size, size);
+  art.blit(pen, glyph, -size / 2, -size / 2, size, size);
   pen.restore();
 }
 

@@ -17,6 +17,16 @@ import {
 
 type Source = CanvasImageSource & { width: number; height: number };
 
+/**
+ * Every canvas the art is kept in is CPU-backed, the same as the scratch
+ * canvas faces are painted in. Drawing a GPU canvas into a CPU one is a
+ * readback per draw - 5ms for one 40-pixel pip, measured - and a face is a
+ * dozen draws. Keeping both ends on the same side makes it a plain copy.
+ */
+export const CPU: CanvasRenderingContext2DSettings = { willReadFrequently: true };
+
+let measure: CanvasRenderingContext2D | undefined;
+
 /** Which file in assets/cards/suits each suit is drawn from. */
 export const STANDARD_SUIT_ART: Readonly<Record<string, string>> = {
   spades: 'spade',
@@ -50,8 +60,15 @@ export class CardArt {
   private readonly loading = new Map<string, Promise<void>>();
   private readonly waiting = new Map<string, Set<Dependent>>();
   private readonly inked = new Map<string, Source>();
+  /** Regions owed a repaint, done once each just before the next frame. */
+  private readonly owed = new Set<Dependent>();
 
   constructor(readonly board: Board) {
+    // Batched: a face waiting on the font and on its court, both of which
+    // land in the same second, is painted again once rather than twice - and
+    // twelve courts arriving in twelve tasks cost twelve repaints per face
+    // waiting on each, not one per frame per arrival.
+    board.beforeRender(() => this.flush());
     void fontsReady().then(() => {
       const token = document.createElement('canvas');
       token.width = token.height = 1;
@@ -82,7 +99,19 @@ export class CardArt {
     const waiting = this.waiting.get(key);
     if (!waiting) return;
     this.waiting.delete(key);
-    for (const dependent of waiting) this.repaint(dependent);
+    for (const dependent of waiting) this.owed.add(dependent);
+    this.board.touch();
+  }
+
+  /** Repaints everything owed one. */
+  flush(): void {
+    if (!this.owed.size) return;
+    const owed = [...this.owed];
+    this.owed.clear();
+    for (const dependent of owed) {
+      // A region given back to the atlas since is not ours to paint.
+      if (dependent.region.refs > 0) this.repaint(dependent);
+    }
   }
 
   /** Loads an image by URL under a key, once. */
@@ -101,18 +130,16 @@ export class CardArt {
         console.warn(`felt: could not load ${url}`);
         return;
       }
-      let source: Source = image;
-      // SVGs are rasterised large once, because they are drawn down to every
-      // size a card comes in and a pip loaded at pip size blurs the moment
-      // somebody asks for a big card.
-      if (size) {
-        const canvas = document.createElement('canvas');
-        canvas.width = size.width;
-        canvas.height = size.height;
-        canvas.getContext('2d')!.drawImage(image, 0, 0, size.width, size.height);
-        source = canvas;
-      }
-      this.provide(key, source);
+      // Rasterised into a CPU canvas once, at a fixed size for SVGs - they are
+      // drawn down to every size a card comes in, and a pip loaded at pip
+      // size blurs the moment somebody asks for a big card.
+      const width = size?.width ?? image.naturalWidth;
+      const height = size?.height ?? image.naturalHeight;
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext('2d', CPU)!.drawImage(image, 0, 0, width, height);
+      this.provide(key, canvas);
     })();
     this.loading.set(key, pending);
     return pending;
@@ -143,6 +170,90 @@ export class CardArt {
     }
   }
 
+  private readonly mips = new WeakMap<object, Source[]>();
+
+  private mipFor(source: Source, width: number, height: number): Source {
+    let chain = this.mips.get(source);
+    if (!chain) this.mips.set(source, (chain = [source]));
+    // Only as deep as this draw needs: a portrait shown at card size wants
+    // one halving, not six.
+    let level = chain[chain.length - 1];
+    while (level.width / 2 >= width && level.height / 2 >= height && level.width >= 16) {
+      const half = document.createElement('canvas');
+      half.width = Math.round(level.width / 2);
+      half.height = Math.round(level.height / 2);
+      const pen = half.getContext('2d', CPU)!;
+      pen.imageSmoothingQuality = 'high';
+      pen.drawImage(level, 0, 0, half.width, half.height);
+      chain.push(half);
+      level = half;
+    }
+    let best = chain[0];
+    for (const candidate of chain) {
+      if (candidate.width >= width && candidate.height >= height) best = candidate;
+    }
+    return best;
+  }
+
+  /**
+   * Draws a source at `x, y, w, h` in the pen's own units, from the smallest
+   * of its halvings that still covers the device pixels that box needs.
+   *
+   * A face draws a 200-pixel glyph down to a 14-pixel pip ten times over, and
+   * a 480-pixel portrait down to the card; resampled straight from the
+   * source, each is bilinear samples skipping most of it - slow and soft.
+   * From the right halving it is never more than a 2x reduction. The
+   * halvings are shared by every size, so a new card size costs nothing -
+   * an exact-size copy per size, tried first, made the sizes page slower.
+   */
+  blit(pen: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, source: Source,
+    x: number, y: number, w: number, h: number): void {
+    const t = pen.getTransform();
+    const scale = Math.hypot(t.a, t.b);
+    pen.drawImage(this.mipFor(source, w * scale, h * scale), x, y, w, h);
+  }
+
+  private readonly texts = new Map<string, { image: Source; pad: number }>();
+
+  /**
+   * Fills a line of text at `x` (left edge) and `y` (middle), from a cached
+   * raster of it.
+   *
+   * `fillText` rasterises its glyphs on every call - 0.6ms for a card's rank,
+   * and 3.7ms at a size it has not drawn before, measured - and a deck draws
+   * the same thirteen ranks in four inks over and over. Rastered once per
+   * text, font, ink and density, every face after copies it.
+   */
+  text(pen: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, text: string,
+    font: string, size: number, color: string, x: number, y: number): void {
+    const t = pen.getTransform();
+    const scale = Math.hypot(t.a, t.b);
+    const key = `${text}|${font}|${color}|${scale.toFixed(3)}`;
+    let hit = this.texts.get(key);
+    if (!hit) {
+      measure ??= document.createElement('canvas').getContext('2d', CPU)!;
+      measure.font = font;
+      const pad = Math.ceil(size * 0.3);
+      const width = measure.measureText(text).width + pad * 2;
+      const height = size * 1.6;
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.ceil(width * scale));
+      canvas.height = Math.max(1, Math.ceil(height * scale));
+      const out = canvas.getContext('2d', CPU)!;
+      out.scale(scale, scale);
+      out.font = font;
+      out.fillStyle = color;
+      out.textBaseline = 'middle';
+      out.textAlign = 'left';
+      out.fillText(text, pad, height / 2);
+      hit = { image: canvas, pad };
+      this.texts.set(key, hit);
+      if (this.texts.size > 600) this.texts.delete(this.texts.keys().next().value!);
+    }
+    const { image, pad } = hit;
+    pen.drawImage(image, x - pad, y - (image.height / scale) / 2, image.width / scale, image.height / scale);
+  }
+
   /**
    * A suit glyph in one color, as a canvas.
    *
@@ -159,7 +270,7 @@ export class CardArt {
     const out = document.createElement('canvas');
     out.width = source.width;
     out.height = source.height;
-    const pen = out.getContext('2d')!;
+    const pen = out.getContext('2d', CPU)!;
     pen.drawImage(source, 0, 0);
     // Keep the shape just drawn, replace everything it is made of.
     pen.globalCompositeOperation = 'source-in';
@@ -221,7 +332,7 @@ export function suitTexture(board: Board, suit: string, color: number, size = 48
   const key = `pip-${suit}-${color.toString(16)}-${px}`;
   const existing = board.atlas.acquire(key);
   if (existing) return existing;
-  const region = board.atlas.obtain(key, px, px, () => { /* painted below */ });
+  const region = board.atlas.reserve(key, px, px);
   art.paintTracked(region, (lookup) => (pen, w, h) => {
     const glyph = art.inkedSuit(suit, color, lookup);
     if (glyph) pen.drawImage(glyph, 0, 0, w, h);

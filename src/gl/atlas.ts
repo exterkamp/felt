@@ -34,13 +34,22 @@ const GUTTER = 2;
 
 interface Shelf { y: number; height: number; x: number }
 
+/**
+ * A page is packing bookkeeping only. Its pixels live on the GPU and nowhere
+ * else: a picture is painted into a small scratch canvas the size of its
+ * region and that is what is uploaded. The first version kept a 2048 canvas
+ * per page and uploaded a dirty rectangle of it, and on a real browser a
+ * sub-rectangle of an accelerated canvas is a readback of the whole thing -
+ * 140ms a frame whenever a new face was painted.
+ */
 interface Page {
-  canvas: HTMLCanvasElement | OffscreenCanvas;
-  pen: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
   shelves: Shelf[];
   bottom: number;
-  dirty?: { x0: number; y0: number; x1: number; y1: number };
 }
+
+/** Where painted pixels go: the renderer, which uploads them at once. */
+export type AtlasSink = (page: number, x: number, y: number, width: number, height: number,
+  pixels: Uint8Array) => void;
 
 type Pen = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 
@@ -64,6 +73,12 @@ export class Atlas {
   generation = 0;
   /** Called when anything is drawn, so the board can schedule a frame. */
   onChange?: () => void;
+  /** Receives every painted picture. Without one (in node) paints go nowhere. */
+  sink?: AtlasSink;
+  private scratch?: HTMLCanvasElement | OffscreenCanvas;
+  private scratchPen?: Pen;
+  /** Paints so far, for anyone measuring. */
+  paints = 0;
 
   constructor(readonly size = 2048, readonly maxPages = 16) {}
 
@@ -91,6 +106,21 @@ export class Atlas {
     return region;
   }
 
+  /**
+   * A region for this key, counted, made but not painted - for a caller that
+   * paints it itself straight after. `obtain` with an empty painter paints
+   * and uploads a blank first, which doubled the cost of every new face.
+   */
+  reserve(key: string, width: number, height: number): Region {
+    const hit = this.acquire(key);
+    if (hit) return hit;
+    const region = this.allocate(width, height);
+    region.key = key;
+    region.refs = 1;
+    this.cache.set(key, region);
+    return region;
+  }
+
   /** Whether a key is in the atlas, without counting it. */
   has(key: string): boolean {
     return this.cache.has(key);
@@ -107,43 +137,57 @@ export class Atlas {
     region.refs = Math.max(0, region.refs - 1);
   }
 
-  /** Paints into a region, replacing what was there. */
+  /**
+   * Paints into a region, replacing what was there, and hands the pixels -
+   * the region and its transparent gutter, nothing more - to the sink.
+   */
   paint(region: Region, paint: Painter): void {
-    const page = this.pages[region.page];
-    const { pen } = page;
-    const x = region.x - GUTTER;
-    const y = region.y - GUTTER;
+    this.paints++;
+    if (!this.sink) {
+      this.onChange?.();
+      return;
+    }
     const w = region.width + 2 * GUTTER;
     const h = region.height + 2 * GUTTER;
+    if (!this.scratch) {
+      this.scratch = makeCanvas(w, h);
+      // CPU-backed on purpose: it is painted and immediately read for upload,
+      // which on a GPU canvas is a readback every time.
+      this.scratchPen = this.scratch.getContext('2d', { willReadFrequently: true }) as Pen;
+    }
+    const canvas = this.scratch;
+    const pen = this.scratchPen!;
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+    } else {
+      pen.setTransform(1, 0, 0, 1, 0, 0);
+      pen.clearRect(0, 0, w, h);
+    }
     pen.save();
-    pen.clearRect(x, y, w, h);
     pen.beginPath();
-    pen.rect(region.x, region.y, region.width, region.height);
+    pen.rect(GUTTER, GUTTER, region.width, region.height);
     pen.clip();
-    pen.translate(region.x, region.y);
+    pen.translate(GUTTER, GUTTER);
     paint(pen, region.width, region.height);
     pen.restore();
-    this.markDirty(page, x, y, w, h);
+    // Read back as bytes and premultiplied here, rather than handing the
+    // canvas to texSubImage: a canvas source goes through the browser's
+    // image-conversion path, which measured at 3ms for one card face against
+    // a fraction of that for the bytes.
+    const data = pen.getImageData(0, 0, w, h).data;
+    const bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+    for (let i = 0; i < bytes.length; i += 4) {
+      const a = bytes[i + 3];
+      if (a === 255) continue;
+      if (a === 0) { bytes[i] = 0; bytes[i + 1] = 0; bytes[i + 2] = 0; continue; }
+      const k = a / 255;
+      bytes[i] = bytes[i] * k + 0.5;
+      bytes[i + 1] = bytes[i + 1] * k + 0.5;
+      bytes[i + 2] = bytes[i + 2] * k + 0.5;
+    }
+    this.sink(region.page, region.x - GUTTER, region.y - GUTTER, w, h, bytes);
     this.onChange?.();
-  }
-
-  /** Takes the dirty rectangle of a page, clearing it. */
-  takeDirty(index: number): Page['dirty'] {
-    const page = this.pages[index];
-    const dirty = page.dirty;
-    page.dirty = undefined;
-    return dirty;
-  }
-
-  private markDirty(page: Page, x: number, y: number, w: number, h: number): void {
-    const x0 = Math.max(0, x);
-    const y0 = Math.max(0, y);
-    const x1 = Math.min(this.size, x + w);
-    const y1 = Math.min(this.size, y + h);
-    const d = page.dirty;
-    page.dirty = d
-      ? { x0: Math.min(d.x0, x0), y0: Math.min(d.y0, y0), x1: Math.max(d.x1, x1), y1: Math.max(d.y1, y1) }
-      : { x0, y0, x1, y1 };
   }
 
   private allocate(width: number, height: number): Region {
@@ -158,6 +202,12 @@ export class Atlas {
       const placed = this.place(i, width, height);
       if (placed) return placed;
     }
+    // Before growing, give back what nobody is looking at: a deck nobody is
+    // using any more, a card size the slider has moved past. A new page is a
+    // reallocation of the whole texture on the GPU, and is the last resort.
+    this.evictUnused();
+    const recycled = this.reuse(width, height, true);
+    if (recycled) return recycled;
     if (this.pages.length < this.maxPages) {
       this.addPage();
       const placed = this.place(this.pages.length - 1, width, height);
@@ -205,10 +255,7 @@ export class Atlas {
   }
 
   private addPage(): void {
-    const canvas = makeCanvas(this.size, this.size);
-    const pen = canvas.getContext('2d', { willReadFrequently: false }) as Pen | null;
-    if (!pen) throw new Error('felt atlas: no 2d context');
-    this.pages.push({ canvas, pen, shelves: [], bottom: 0 });
+    this.pages.push({ shelves: [], bottom: 0 });
     this.generation++;
   }
 

@@ -65,7 +65,7 @@ export function renderTuckBox(board: Board, size: TuckBoxSize, art: TuckBoxArt):
   const atlas = tuckBoxAtlas(size, scale);
   ensureArt(board, art.theme, 'spades');
   const cardArt = CardArt.of(board);
-  const region = board.atlas.obtain(key, atlas.width, atlas.height, () => { /* below */ });
+  const region = board.atlas.reserve(key, atlas.width, atlas.height);
   cardArt.paintTracked(region, (lookup) => {
     const source = lookup.get(backAssetKey(art.theme));
     lookup.get(FONT_ASSET);

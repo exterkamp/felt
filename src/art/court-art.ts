@@ -15,7 +15,7 @@ import {
   partBackgroundPixels,
 } from '../core/index.js';
 import type { Board } from '../scene/board.js';
-import { CardArt } from './card-art.js';
+import { CPU, CardArt } from './card-art.js';
 import { courtWorkerPool, courtSlots } from './court-worker.js';
 
 // Court portraits, rendered while the game is running.
@@ -101,16 +101,62 @@ export async function renderCourt(
   }
 }
 
+type Page = ImageBitmap | HTMLImageElement;
+
+/** Rasterised pages, by palette, court and size. A few decks' worth. */
+const pages = new Map<string, Promise<Page>>();
+const PAGES_KEPT = 48;
+
+/**
+ * One court's whole page, recoloured and rasterised at the size a cut of it
+ * needs - once, however many cuts are taken from it.
+ *
+ * The half and the full figure are two windows on the same page, and before
+ * this each of them recoloured the 2MB of SVG, made a blob of it, decoded it
+ * and rasterised it on its own: a page drawing all three faces paid for every
+ * court twice. Measured, that was most of what changing deck cost.
+ */
+function courtPage(rank: CourtRank, suit: string, palette: CourtPalette, width: number): Promise<Page> {
+  const size = courtSourceSize(width);
+  const key = `${courtTextureKey(palette, rank, suit, width)}-${size.width}x${size.height}`;
+  let pending = pages.get(key);
+  if (pending) {
+    pages.delete(key);
+    pages.set(key, pending);
+    return pending;
+  }
+  pending = (async () => {
+    const svg = prepareCourt(await sourceSvg(rank, suit), palette);
+    const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+    try {
+      const image = new Image();
+      image.src = url;
+      await image.decode();
+      if (typeof createImageBitmap !== 'function') return image;
+      return await createImageBitmap(image, {
+        resizeWidth: size.width, resizeHeight: size.height, resizeQuality: 'high',
+      });
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  })();
+  pending.catch(() => pages.delete(key));
+  pages.set(key, pending);
+  while (pages.size > PAGES_KEPT) {
+    const oldest = pages.keys().next().value!;
+    const gone = pages.get(oldest);
+    pages.delete(oldest);
+    void gone?.then((page) => { if ('close' in page) page.close(); }, () => undefined);
+  }
+  return pending;
+}
+
 async function paintCourt(
   board: Board, key: string, rank: CourtRank, suit: string,
   palette: CourtPalette, width: number, cut: CourtCut,
 ): Promise<string> {
-  const svg = prepareCourt(await sourceSvg(rank, suit), palette);
-  const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
-  try {
-    const image = new Image();
-    image.src = url;
-    await image.decode();
+  {
+    const image = await courtPage(rank, suit, palette, width);
 
     // Off the main thread where the browser allows it. Anything that goes
     // wrong over there - no worker, a dead one, a message that would not
@@ -134,7 +180,7 @@ async function paintCourt(
     const page = document.createElement('canvas');
     page.width = source.width;
     page.height = source.height;
-    const pen = page.getContext('2d');
+    const pen = page.getContext('2d', CPU);
     if (!pen) throw new Error('court art: no 2d context');
     pen.drawImage(image, 0, 0, source.width, source.height);
 
@@ -154,7 +200,7 @@ async function paintCourt(
     const out = document.createElement('canvas');
     out.width = Math.round(width);
     out.height = courtArtHeight(width, cut);
-    const cropPen = out.getContext('2d');
+    const cropPen = out.getContext('2d', CPU);
     if (!cropPen) throw new Error('court art: no 2d context');
     cropPen.drawImage(page, crop.x, crop.y, crop.width, crop.height,
       0, 0, out.width, out.height);
@@ -174,8 +220,6 @@ async function paintCourt(
     const art = CardArt.of(board);
     if (!board.isDestroyed && !art.has(key)) art.provide(key, out);
     return key;
-  } finally {
-    URL.revokeObjectURL(url);
   }
 }
 
@@ -188,16 +232,20 @@ async function paintCourt(
  */
 async function paintInWorker(
   pool: NonNullable<ReturnType<typeof courtWorkerPool>>,
-  image: HTMLImageElement, rank: CourtRank, suit: string,
+  image: Page, rank: CourtRank, suit: string,
   palette: CourtPalette, width: number, cut: CourtCut,
   board: Board, key: string,
 ): Promise<void> {
   const source = courtSourceSize(width);
   const highlight = courtHighlight(palette);
   const paper = courtPaper(palette);
-  const bitmap = await createImageBitmap(image, {
-    resizeWidth: source.width, resizeHeight: source.height, resizeQuality: 'high',
-  });
+  // A copy, because the worker is handed it to keep and the page is shared
+  // with the other cut. Copying a bitmap is cheap; rasterising an SVG is not.
+  const bitmap = image instanceof ImageBitmap
+    ? await createImageBitmap(image)
+    : await createImageBitmap(image, {
+      resizeWidth: source.width, resizeHeight: source.height, resizeQuality: 'high',
+    });
   const outWidth = Math.round(width);
   const outHeight = courtArtHeight(width, cut);
   const painted = await pool.run({
@@ -219,7 +267,7 @@ async function paintInWorker(
     const out = document.createElement('canvas');
     out.width = outWidth;
     out.height = outHeight;
-    const pen = out.getContext('2d');
+    const pen = out.getContext('2d', CPU);
     if (!pen) throw new Error('court art: no 2d context');
     pen.drawImage(painted, 0, 0);
     art.provide(key, out);
