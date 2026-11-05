@@ -212,6 +212,22 @@ check(sheets.faces === 1 && sheets.backs === 1 && sheets.shared === 1,
 check(sheets.cells === 52 && sheets.warming === 0, `the sheet warms itself to the whole deck (${sheets.cells} cells)`);
 check(sheets.repaints === 0, `dealing again paints nothing (${sheets.repaints} paints)`);
 
+// The GPU can take the context away at any moment; every picture has to come
+// back from the atlas, including ones painted while it was gone.
+const restoredStacks = JSON.parse(await evaluate(`(async () => {
+  const b = __felt.board; const gl = b.renderer.gl; const ext = gl.getExtension('WEBGL_lose_context');
+  const count = () => { const c = b.snapshotCanvas(); const px = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+    let n = 0; for (let i = 0; i < px.length; i += 4) if (px[i] > 240 && px[i + 1] > 240 && px[i + 2] > 240) n++; return n; };
+  const before = count();
+  ext.loseContext(); await new Promise(r => setTimeout(r, 300));
+  document.getElementById('deal').click();
+  ext.restoreContext(); await new Promise(r => setTimeout(r, 1500));
+  return JSON.stringify({ before, after: count(), losses: b.contextLosses, lost: gl.isContextLost() });
+})()`));
+check(restoredStacks.losses === 1 && !restoredStacks.lost && restoredStacks.after > restoredStacks.before * 0.8,
+  `a lost WebGL context comes back with every card on it (${restoredStacks.after} card pixels, ${restoredStacks.before} before)`);
+check(await evaluate(`!!document.querySelector('.felt-fps')?.textContent`), 'the frame-rate readout is on the page');
+
 // Asleep when nothing moves.
 const idle = await evaluate(`(async () => { const b = __felt.board;
   await new Promise(r => setTimeout(r, 400)); const f = b.frames;
@@ -341,6 +357,15 @@ const box = JSON.parse(await evaluate(`(async () => {
     centre: b.deckCentre() });
 })()`));
 check(box.turned, 'the box turns on the spot');
+const boxBack = await evaluate(`(async () => {
+  const b = __felt.board; const ext = b.renderer.gl.getExtension('WEBGL_lose_context');
+  ext.loseContext(); await new Promise(r => setTimeout(r, 300)); ext.restoreContext();
+  await new Promise(r => setTimeout(r, 1000));
+  const c = b.snapshotCanvas(); const px = c.getContext('2d').getImageData(c.width / 2 - 40, 140, 80, 120).data;
+  let felt = 0; for (let i = 0; i < px.length; i += 4) if (Math.abs(px[i] - 0x13) < 6 && Math.abs(px[i + 1] - 0x46) < 6) felt++;
+  return felt / (px.length / 4);
+})()`);
+check(boxBack < 0.5, `and the tuck box survives a lost context too (${Math.round(boxBack * 100)}% felt where it stands)`);
 check(box.cards === 52 && box.landed, `the deck comes out as fifty-two real cards and squares up (${box.cards})`);
 check(Math.abs(box.centre.x - 240) < 4 && box.centre.y < 210, `and the block it replaced had risen out of the box (${box.centre.x.toFixed(1)}, ${box.centre.y.toFixed(1)})`);
 

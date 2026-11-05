@@ -14,6 +14,8 @@ export { Node } from './scene/node.js';
 export { Sprite } from './scene/sprite.js';
 export type { SpriteOptions } from './scene/sprite.js';
 export { Tween, Tweens } from './scene/tweens.js';
+export { fpsMeter } from './scene/fps.js';
+export type { FpsMeter } from './scene/fps.js';
 export type { TweenConfig } from './scene/tweens.js';
 export { easeOf } from './scene/ease.js';
 export type { Ease } from './scene/ease.js';

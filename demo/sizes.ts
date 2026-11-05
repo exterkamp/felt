@@ -3,6 +3,7 @@ import {
   Card, CardSprite, COURT_PALETTES, DECK_THEMES, DeckTheme, DISPLAY_FONT, Rank, Sprite, Suit,
   buildDeck, cardFaceMetrics, createBoard, loadCardArt, renderCourts,
 } from 'felt';
+import { expose } from './kit';
 
 // The same card at seven sizes.
 //
@@ -104,4 +105,4 @@ document.getElementById('ranks')?.addEventListener('click', () => {
 });
 
 lay();
-(window as unknown as Record<string, unknown>)['__felt'] = { board, cards: () => cards };
+expose({ board, cards: () => cards });

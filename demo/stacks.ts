@@ -5,6 +5,7 @@ import {
   createBoard, defineStack, loadCardArt, nextPosition, orderStack, renderCourts, seeded, shuffle,
   stackPositions, stackUnder, topCardIndex, Card,
 } from 'felt';
+import { expose } from './kit';
 
 // A board made of nothing but stacks.
 //
@@ -251,4 +252,4 @@ deal();
 report();
 
 // The handle a console session - or the smoke test - reaches the board by.
-(window as unknown as Record<string, unknown>)['__felt'] = { board, piles: () => piles };
+expose({ board, piles: () => piles });

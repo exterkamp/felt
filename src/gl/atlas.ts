@@ -33,6 +33,12 @@ export interface Region {
    * rest when it has a moment.
    */
   shownAt?: number;
+  /**
+   * How to paint it again. The pixels live on the GPU and nowhere else, so
+   * when the GPU loses them - a lost context, a texture that could not be
+   * grown - this is how every picture comes back.
+   */
+  replay?: () => void;
 }
 
 /** Room left round every region, so filtering never reads a neighbour. */
@@ -142,6 +148,14 @@ export class Atlas {
     return this.cache.get(key);
   }
 
+  /**
+   * Paints every picture in the atlas again, from how each was last painted.
+   * After a lost context the GPU's copy is gone, and this is the only copy.
+   */
+  repaintAll(): void {
+    for (const region of [...this.cache.values()]) region.replay?.();
+  }
+
   /** Lets go of one use. A region nobody uses may be reused for another. */
   release(region: Region | undefined): void {
     if (!region) return;
@@ -152,8 +166,9 @@ export class Atlas {
    * Paints into a region, replacing what was there, and hands the pixels -
    * the region and its transparent gutter, nothing more - to the sink.
    */
-  paint(region: Region, paint: Painter): void {
+  paint(region: Region, paint: Painter, replay?: () => void): void {
     this.paints++;
+    region.replay = replay ?? (() => this.paint(region, paint));
     if (!this.sink) {
       this.onChange?.();
       return;
@@ -259,6 +274,7 @@ export class Atlas {
       if (region.refs > 0) continue;
       this.cache.delete(key);
       region.key = undefined;
+      region.replay = undefined;
       const slot = `${region.width}x${region.height}`;
       const list = this.free.get(slot) ?? [];
       list.push(region);

@@ -65,6 +65,8 @@ function uniforms(gl: WebGL2RenderingContext, program: WebGLProgram, names: stri
 const PROJECTION_UNIFORMS = ['u_board', 'u_distance', 'u_vanish', 'u_local', 'u_atlas'];
 
 export interface MeshBuffers {
+  /** The renderer generation it was made in; stale after a lost context. */
+  generation: number;
   vao: WebGLVertexArrayObject;
   position: WebGLBuffer;
   uv: WebGLBuffer;
@@ -88,13 +90,20 @@ export interface MeshDraw {
 
 export class Renderer {
   readonly gl: WebGL2RenderingContext;
-  private readonly cardProgram: WebGLProgram;
-  private readonly meshProgram: WebGLProgram;
-  private readonly cardUniforms: Uniforms;
-  private readonly meshUniforms: Uniforms;
-  private readonly cardVao: WebGLVertexArrayObject;
-  private readonly instanceBuffer: WebGLBuffer;
-  private readonly indexCount: number;
+  // Everything below is the GPU's, and a lost context takes all of it with
+  // it - so it is made in `setup`, which a restored context runs again.
+  private cardProgram!: WebGLProgram;
+  private meshProgram!: WebGLProgram;
+  private cardUniforms!: Uniforms;
+  private meshUniforms!: Uniforms;
+  private cardVao!: WebGLVertexArrayObject;
+  private instanceBuffer!: WebGLBuffer;
+  private indexCount = 0;
+  /**
+   * Bumped every time the GPU's objects are made again. Anything holding a
+   * buffer of its own - a tuck box's meshes - compares against it.
+   */
+  generation = 0;
   private instances = new Float32Array(INSTANCE_FLOATS * 256);
   private texture: WebGLTexture | null = null;
   private textureLayers = 0;
@@ -119,7 +128,29 @@ export class Renderer {
     if (!gl) throw new Error('felt: this browser has no WebGL2');
     this.gl = gl;
     this.maxTextureLayers = gl.getParameter(gl.MAX_ARRAY_TEXTURE_LAYERS) as number;
+    this.setup();
+    atlas.sink = (page, x, y, w, h, pixels) => this.upload(page, x, y, w, h, pixels);
+  }
 
+  /** Whether the GPU has taken the context away. Nothing draws until it returns. */
+  get lost(): boolean {
+    return this.gl.isContextLost();
+  }
+
+  /**
+   * Makes every GPU object again, after the context came back. The texture
+   * comes back empty; the board then has the atlas repaint every picture in
+   * it, which is the only place those pixels can come from.
+   */
+  restore(): void {
+    this.texture = null;
+    this.textureLayers = 0;
+    this.setup();
+  }
+
+  private setup(): void {
+    const gl = this.gl;
+    this.generation++;
     this.cardProgram = link(gl, INSTANCE_VERTEX, INSTANCE_FRAGMENT);
     this.meshProgram = link(gl, MESH_VERTEX, MESH_FRAGMENT);
     this.cardUniforms = uniforms(gl, this.cardProgram, [...PROJECTION_UNIFORMS, 'u_frontFacing']);
@@ -154,7 +185,6 @@ export class Renderer {
     }
     this.pointInstances(0);
     gl.bindVertexArray(null);
-    atlas.sink = (page, x, y, w, h, pixels) => this.upload(page, x, y, w, h, pixels);
   }
 
   /** Points the eight instance attributes at the run starting at `first`. */
@@ -183,7 +213,7 @@ export class Renderer {
     gl.enableVertexAttribArray(1);
     gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 0, 0);
     gl.bindVertexArray(null);
-    return { vao, position, uv, count: positions.length / 3 };
+    return { generation: this.generation, vao, position, uv, count: positions.length / 3 };
   }
 
   updateMesh(buffers: MeshBuffers, positions: Float32Array): void {
@@ -212,6 +242,7 @@ export class Renderer {
     const size = this.atlas.size;
     const layers = Math.min(this.maxTextureLayers, Math.max(4, pages * 2, this.textureLayers * 2));
     const next = gl.createTexture()!;
+    let copied = true;
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, next);
     gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA8, size, size, layers);
@@ -229,16 +260,23 @@ export class Renderer {
       gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
       gl.deleteFramebuffer(fb);
       gl.deleteTexture(this.texture);
+      // A driver that refused the copy would leave every card blank. The
+      // atlas can paint everything again, so ask it to rather than trust it.
+      copied = gl.getError() === gl.NO_ERROR;
     }
     // A new texture needs no clearing: WebGL hands it over zeroed.
     this.texture = next;
     this.textureLayers = layers;
+    if (!copied) this.atlas.repaintAll();
   }
 
   /** The atlas's sink: one freshly painted picture, uploaded now. */
   private upload(page: number, x: number, y: number, width: number, height: number,
     pixels: Uint8Array): void {
     const gl = this.gl;
+    // Painted while the context is gone: lost with it, and repainted with
+    // everything else when it comes back.
+    if (gl.isContextLost()) return;
     this.ensureLayers(Math.max(page + 1, this.atlas.pages.length));
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.texture);
@@ -263,6 +301,7 @@ export class Renderer {
   /** Draws one frame: everything in `items`, back to front. */
   frame(items: readonly DrawItem[], camera: FrameCamera, background: [number, number, number, number]): void {
     const gl = this.gl;
+    if (gl.isContextLost()) return;
     this.camera = camera;
     this.ensureLayers(this.atlas.pages.length);
     gl.activeTexture(gl.TEXTURE0);

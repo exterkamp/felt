@@ -4,6 +4,7 @@ import {
   DECK_THEME_LABELS, DISPLAY_FONT, DeckTheme, FACE_STYLES, FaceStyle, Rank, SUITS, Sprite, Suit,
   cardFaceMetrics, colorCss, createBoard, loadCardArt, renderCourts,
 } from 'felt';
+import { expose } from './kit';
 
 // Three layouts, side by side, at a size you can drag.
 //
@@ -89,6 +90,6 @@ document.getElementById('deck')?.addEventListener('click', () => {
 });
 
 paint();
-(window as unknown as Record<string, unknown>)['__felt'] = {
+expose({
   board, cards: () => cards, CardSprite, renderCourts, courtStart, COURT_PALETTES, DECK_STOCK,
-};
+});

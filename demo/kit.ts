@@ -1,4 +1,4 @@
-import { Board, CARD_HEIGHT, CARD_WIDTH, DISPLAY_FONT, Sprite } from 'felt';
+import { Board, CARD_HEIGHT, CARD_WIDTH, DISPLAY_FONT, Sprite, fpsMeter } from 'felt';
 
 // The two things every demo page prints on its felt: the outline of an empty
 // pile, and a small label. One picture each, shared by every sprite using it.
@@ -19,7 +19,11 @@ export function label(board: Board, x: number, y: number, text: string,
   return board.text(text, { font, size, color }, { x, y, depth: 0 });
 }
 
-/** Hands the page's state to the console and the smoke test. */
-export function expose(handle: Record<string, unknown>): void {
+/**
+ * Hands the page's state to the console and the smoke test, and pins the
+ * frame-rate readout to the top-right of every demo.
+ */
+export function expose(handle: Record<string, unknown> & { board?: Board }): void {
   (window as unknown as Record<string, unknown>)['__felt'] = handle;
+  if (handle.board) fpsMeter(handle.board);
 }

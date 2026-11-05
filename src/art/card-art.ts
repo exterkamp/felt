@@ -49,7 +49,12 @@ export interface ArtLookup {
   get(key: string): Source | undefined;
 }
 
-interface Dependent { region: Region; paint: (art: ArtLookup) => Painter }
+/**
+ * A picture that will need painting again. `key` is what the region held when
+ * it was asked for: a region given back and reused for another picture has
+ * another key, and the old painter must not land on the new picture.
+ */
+interface Dependent { region: Region; key: string | undefined; paint: (art: ArtLookup) => Painter }
 
 /** Stands for the faces' fonts having loaded. Nothing is drawn from it. */
 export const FONT_ASSET = 'font:faces';
@@ -120,8 +125,8 @@ export class CardArt {
     const deadline = performance.now() + OFFSCREEN_BUDGET_MS;
     for (const dependent of [...this.owed]) {
       const region = dependent.region;
-      // A region given back to the atlas since is not ours to paint.
-      if (region.refs <= 0) {
+      // A region given back to the atlas and reused since is not ours to paint.
+      if (region.key !== dependent.key) {
         this.owed.delete(dependent);
         continue;
       }
@@ -170,10 +175,11 @@ export class CardArt {
    * be painted again for anything it asked for and did not get.
    */
   paintTracked(region: Region, paint: (art: ArtLookup) => Painter): void {
-    this.repaint({ region, paint });
+    this.repaint({ region, key: region.key, paint });
   }
 
   private repaint(dependent: Dependent): void {
+    if (dependent.region.key !== dependent.key) return;
     const missing: string[] = [];
     const lookup: ArtLookup = {
       get: (key) => {
@@ -182,7 +188,7 @@ export class CardArt {
         return found;
       },
     };
-    this.board.atlas.paint(dependent.region, dependent.paint(lookup));
+    this.board.atlas.paint(dependent.region, dependent.paint(lookup), () => this.repaint(dependent));
     for (const key of missing) {
       let set = this.waiting.get(key);
       if (!set) this.waiting.set(key, (set = new Set()));

@@ -121,6 +121,10 @@ export class Board {
   private readonly cleanup: (() => void)[] = [];
   /** Frames drawn so far. */
   frames = 0;
+  /** Times the GPU took the context away. Each was rebuilt from. */
+  contextLosses = 0;
+  /** Milliseconds the last frame's work took: update, tweens, painting, drawing. */
+  frameWork = 0;
   /** Run before every frame is drawn - work batched up to happen once a frame. */
   private readonly beforeFrame: (() => void)[] = [];
 
@@ -370,17 +374,31 @@ export class Board {
     canvas.addEventListener('pointermove', move);
     canvas.addEventListener('pointerup', up);
     canvas.addEventListener('pointercancel', up);
+    // The GPU can take the context away at any time - a backgrounded tab, too
+    // many WebGL pages open, a driver reset - and every texture and buffer
+    // goes with it. preventDefault says we will rebuild; `restored` does: the
+    // renderer makes its objects again and the atlas repaints every picture
+    // from how it was painted, because the GPU held the only copy.
     const lost = (event: Event) => {
       if (this.destroyedFlag) return;
       event.preventDefault();
+      this.contextLosses++;
+    };
+    const restored = () => {
+      if (this.destroyedFlag) return;
+      this.renderer.restore();
+      this.atlas.repaintAll();
+      this.touch();
     };
     canvas.addEventListener('webglcontextlost', lost);
+    canvas.addEventListener('webglcontextrestored', restored);
     this.cleanup.push(() => {
       canvas.removeEventListener('pointerdown', down);
       canvas.removeEventListener('pointermove', move);
       canvas.removeEventListener('pointerup', up);
       canvas.removeEventListener('pointercancel', up);
       canvas.removeEventListener('webglcontextlost', lost);
+      canvas.removeEventListener('webglcontextrestored', restored);
     });
   }
 
@@ -456,6 +474,7 @@ export class Board {
   private tick(now: number): void {
     this.frameRequest = 0;
     if (this.destroyedFlag) return;
+    const started = performance.now();
     const delta = this.last ? Math.min(100, now - this.last) : 16;
     this.last = now;
     this.time += delta;
@@ -471,6 +490,7 @@ export class Board {
       this.dirty = false;
       this.render();
     }
+    this.frameWork = performance.now() - started;
     if (updating || tweening || this.awake > 0 || this.dirty) {
       this.wake();
     } else {

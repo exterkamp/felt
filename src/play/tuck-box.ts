@@ -225,7 +225,10 @@ export class TuckBox implements BoardMesh {
     const rotation = this.rotation();
     for (const part of this.parts) {
       if (part.part === 'block' && !this.deckShown) continue;
-      if (!part.buffers) part.buffers = renderer.createMesh(part.positions, part.uvs);
+      // Made again after a lost context took the old ones with it.
+      if (!part.buffers || part.buffers.generation !== renderer.generation) {
+        part.buffers = renderer.createMesh(part.positions, part.uvs);
+      }
       else if (part.dirty) renderer.updateMesh(part.buffers, part.positions);
       part.dirty = false;
       renderer.drawMesh({
