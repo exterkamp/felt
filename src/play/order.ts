@@ -81,6 +81,9 @@ export function layHand(
     void animator.play(sprite, {
       channel: 'move',
       policy: 'interrupt',
+      // Re-fanned to the place it is already going to - a hand re-laid on
+      // every pointer move - carries on rather than easing out again.
+      intent: `lay ${place.x} ${place.y} ${place.angle}`,
       duration,
       ease: options.ease ?? 'Cubic.easeOut',
       start: () => {

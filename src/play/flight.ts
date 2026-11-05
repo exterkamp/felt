@@ -176,6 +176,9 @@ export function throwCard(
     channel: 'move',
     policy: 'interrupt',
     priority: 1,
+    // Thrown again to where it is already flying - a double-tapped deal
+    // button - is the same throw, and does not start it over.
+    intent: `throw ${landing.x} ${landing.y} ${settleAngle}`,
     duration: options.duration ?? flightDuration(distance),
     delay: options.delay ?? 0,
     // Out of the hand fast and slowing into the table, which is how a thrown

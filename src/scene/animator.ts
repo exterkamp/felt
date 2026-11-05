@@ -15,8 +15,10 @@ import type { Tweens } from './tweens.js';
 // lens, larger). An offset cannot accumulate: there is only ever the one.
 //
 // **Each runs on a channel, with a policy for being asked again.** A card's
-// `flip` channel queues - five taps are five flips, each from where the last
-// one finished. Its `move` channel is shared by a throw and a re-fan; a new
+// `flip` channel keeps the latest ask - at most one flip waits behind the
+// running one, and asks are deduplicated by what they would leave the card
+// as (see `intent`) and debounced (see `debounce`), so a burst of taps is
+// never a backlog of flips to sit through. Its `move` channel is shared by a throw and a re-fan; a new
 // throw cuts the old one off where it is, and a re-fan does not touch a card
 // a throw is still carrying (lower priority yields). A `pop` restarts.
 //
@@ -51,9 +53,13 @@ const isLayered = (target: object): target is Layered =>
  * `queue` waits its turn. `interrupt` stops the running one where it is (its
  * offset comes off; its `complete` does not run) and starts. `finish` jumps
  * the running one to its end, `complete` and all, and starts. `ignore` does
- * not start, and hands back the running one's promise.
+ * not start, and hands back the running one's promise. `latest` waits like
+ * `queue`, but only one waits: a newer ask replaces it.
  */
-export type Policy = 'queue' | 'interrupt' | 'finish' | 'ignore';
+export type Policy = 'queue' | 'latest' | 'interrupt' | 'finish' | 'ignore';
+
+/** What an animation leaves its target as, compared with `===`. */
+export type Intent = string | number | boolean;
 
 export interface Canned {
   /** Which channel of the target it runs on. */
@@ -64,6 +70,21 @@ export interface Canned {
    * finished by lower ones; the lower one is ignored instead.
    */
   priority?: number;
+  /**
+   * What it leaves the target as - a flip's `faceUp`, a move's destination.
+   * An ask whose intent is what the channel will already end on (the last
+   * waiting animation's, or the running one's) is a duplicate: it does not
+   * start, and hands back that animation's promise. Under `latest`, an ask
+   * for what the *running* one ends on calls off the one waiting - tapped
+   * flip, flip back, the card ends where the first tap sends it.
+   */
+  intent?: Intent;
+  /**
+   * Milliseconds. An ask within this long of the previous ask on the channel
+   * (taken or not) is dropped - the second tap of a bounced button, or of a
+   * touch that also fires a click. Wall clock, since it is about the input.
+   */
+  debounce?: number;
   duration: number;
   delay?: number;
   ease?: string | Ease;
@@ -95,6 +116,8 @@ interface Running {
 interface Channel {
   running?: Running;
   queue: Running[];
+  /** When it was last asked for anything, by the wall clock. */
+  asked?: number;
 }
 
 function makeRunning(spec: Canned): Running {
@@ -113,6 +136,8 @@ export class Animator {
   /** Every channel with something running, and whose it is. */
   private readonly active = new Map<Channel, object>();
   private ticking = false;
+  /** The wall clock debouncing is measured on. Replaceable in tests. */
+  now: () => number = () => performance.now();
 
   constructor(private readonly tweens: Tweens) {}
 
@@ -123,13 +148,34 @@ export class Animator {
     let channel = byName.get(spec.channel);
     if (!channel) byName.set(spec.channel, (channel = { queue: [] }));
 
+    const current = channel.running && !channel.running.done ? channel.running : undefined;
+    const last = channel.queue[channel.queue.length - 1] ?? current;
+    const settled = () => (last ? last.promise : Promise.resolve());
+
+    const now = this.now();
+    const bounced = spec.debounce !== undefined && channel.asked !== undefined
+      && now - channel.asked < spec.debounce;
+    channel.asked = now;
+    if (bounced) return settled();
+    if (last && spec.intent !== undefined && last.spec.intent === spec.intent) return last.promise;
+
     const next = makeRunning(spec);
-    const current = channel.running;
-    if (current && !current.done) {
+    if (current) {
       const policy = spec.policy ?? 'queue';
       const outranked = (current.spec.priority ?? 0) > (spec.priority ?? 0);
-      if (policy === 'ignore' || (outranked && policy !== 'queue')) return current.promise;
+      const waits = policy === 'queue' || policy === 'latest';
+      if (policy === 'ignore' || (outranked && !waits)) return current.promise;
       if (policy === 'queue') {
+        channel.queue.push(next);
+        return next.promise;
+      }
+      if (policy === 'latest') {
+        // Whoever was waiting on a replaced ask waits on what replaced it.
+        const replaced = channel.queue.splice(0);
+        const back = spec.intent !== undefined && current.spec.intent === spec.intent;
+        const instead = back ? current : next;
+        for (const waiting of replaced) void instead.promise.then(waiting.resolve);
+        if (back) return current.promise;
         channel.queue.push(next);
         return next.promise;
       }
@@ -153,6 +199,19 @@ export class Animator {
   running(target: object, channel: string): Canned | undefined {
     const running = this.channels.get(target)?.get(channel)?.running;
     return running && !running.done ? running.spec : undefined;
+  }
+
+  /**
+   * What a channel of a target will have left it as once everything on it
+   * has played - the last waiting animation's intent, else the running
+   * one's - or undefined when it is idle or the animations carry none.
+   * A toggle asks this, rather than the target, what it is toggling from.
+   */
+  intent(target: object, channel: string): Intent | undefined {
+    const ch = this.channels.get(target)?.get(channel);
+    if (!ch) return undefined;
+    const running = ch.running && !ch.running.done ? ch.running : undefined;
+    return (ch.queue[ch.queue.length - 1] ?? running)?.spec.intent;
   }
 
   /** Stops a channel (or every channel) of a target where it is, and its queue. */

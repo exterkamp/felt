@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { defineHand, defineStack, handPositions, stackDepths } from '../core/index.js';
+import { animatorOf } from '../scene/animator.js';
 import { Tweens } from '../scene/tweens.js';
 import { flipCard } from './flip.js';
 import { popCard, throwCard } from './flight.js';
@@ -79,24 +80,90 @@ describe('canned animations, tapped fast', () => {
     setFaceUp(up: boolean) { this.card.faceUp = up; },
   });
 
-  // The bug: a flip tapped mid-flip lifted from the first one's height, and
-  // a few quick taps left the card floating - and, through the lens, larger.
-  it('five quick flips are five flips, and leave the card on the table', async () => {
+  // A host whose animator debounces on a clock the test turns.
+  function clocked() {
     const h = host();
+    const clock = { now: 0 };
+    animatorOf(h).now = () => clock.now;
+    const run = (ms: number, each?: () => void) => {
+      for (let left = ms; left > 0; left -= 10) { clock.now += 10; h.tweens.update(10); each?.(); }
+    };
+    return { h, clock, run };
+  }
+
+  // The first bug: a flip tapped mid-flip lifted from the first one's height,
+  // and a few quick taps left the card floating - and, through the lens,
+  // larger. The second: once that was fixed, every tap queued a whole flip.
+  it('a burst of taps is one flip, on the table, at once', async () => {
+    const { h, run } = clocked();
     const sprite = flippable();
     let highest = 0;
     const flips = [];
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 12; i++) {
       flips.push(flipCard(h, sprite, { lift: 18 }));
-      h.tweens.update(40);
-      highest = Math.max(highest, sprite.z);
+      run(40, () => { highest = Math.max(highest, sprite.z); });
     }
-    for (let i = 0; i < 200; i++) { h.tweens.update(16); highest = Math.max(highest, sprite.z); }
+    run(400, () => { highest = Math.max(highest, sprite.z); });
     await Promise.all(flips);
     expect(highest).toBeLessThanOrEqual(18.0001);
     expect(sprite.z).toBe(0);
     expect(sprite.turn).toBe(0);
-    expect(sprite.card.faceUp).toBe(true);   // odd number of flips
+    expect(sprite.card.faceUp).toBe(true);
+    expect(animatorOf(h).busy(sprite, 'flip')).toBe(false);
+  });
+
+  it('a tap during a flip waits as one more flip, and a third calls it off', async () => {
+    const { h, run } = clocked();
+    const sprite = flippable();
+    let flips = 0;
+    const was = sprite.setFaceUp;
+    sprite.setFaceUp = function (up: boolean) { flips++; was.call(this, up); };
+    void flipCard(h, sprite);              // to face up
+    run(150);
+    void flipCard(h, sprite);              // then back down
+    expect(animatorOf(h).intent(sprite, 'flip')).toBe(false);
+    run(150);
+    void flipCard(h, sprite);              // no: stay up
+    expect(animatorOf(h).intent(sprite, 'flip')).toBe(true);
+    run(800);
+    expect(flips).toBe(1);
+    expect(sprite.card.faceUp).toBe(true);
+  });
+
+  it('taps a flip apart are a flip each', async () => {
+    const { h, run } = clocked();
+    const sprite = flippable();
+    for (let i = 0; i < 3; i++) { void flipCard(h, sprite); run(400); }
+    expect(sprite.card.faceUp).toBe(true);
+    void flipCard(h, sprite);
+    run(400);
+    expect(sprite.card.faceUp).toBe(false);
+  });
+
+  it('saying which side is not debounced, and saying it twice is once', async () => {
+    const { h, run } = clocked();
+    const sprite = flippable();
+    const a = flipCard(h, sprite, { faceUp: true });
+    const b = flipCard(h, sprite, { faceUp: true });
+    expect(b).toBe(a);
+    void flipCard(h, sprite, { faceUp: false });
+    expect(animatorOf(h).intent(sprite, 'flip')).toBe(false);
+    run(800);
+    expect(sprite.card.faceUp).toBe(false);
+  });
+
+  it('a throw thrown again to the same place carries on', async () => {
+    const { h, run } = clocked();
+    const sprite = card();
+    const first = throwCard(h, sprite, { x: 200, y: 0 }, { duration: 300, pop: false });
+    run(100);
+    const x = sprite.x;
+    expect(throwCard(h, sprite, { x: 200, y: 0 }, { duration: 300, pop: false })).toBe(first);
+    run(10);
+    expect(sprite.x).toBeGreaterThan(x);
+    run(400);
+    await first;
+    expect(sprite.x).toBe(200);
   });
 
   it('a pop popped again does not grow the card', async () => {

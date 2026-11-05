@@ -241,19 +241,23 @@ await until(`__felt.pile().length >= 5 && !__felt.board.tweens.count`, 20000);
 const taps = JSON.parse(await evaluate(`(async () => {
   const b = __felt.board; const flip = document.getElementById('flip');
   const top = () => __felt.pile()[__felt.pile().length - 1];
-  const was = top().card.faceUp; let maxZ = 0, maxScale = 0;
+  const was = top().card.faceUp; let maxZ = 0, maxScale = 0, landed = 0;
+  const card = top(); const set = card.setFaceUp; card.setFaceUp = function (up) { landed++; return set.call(this, up); };
   const watch = () => { const p = top().shown; maxZ = Math.max(maxZ, p.z); maxScale = Math.max(maxScale, p.scaleX); };
   b.on('update', watch);
+  const t0 = performance.now();
   for (let i = 0; i < 7; i++) { flip.click(); await new Promise(r => setTimeout(r, 30)); }
-  while (b.tweens.count) await new Promise(r => setTimeout(r, 100));
-  b.off('update', watch);
+  while (b.tweens.count) await new Promise(r => setTimeout(r, 20));
+  const settled = performance.now() - t0;
+  b.off('update', watch); card.setFaceUp = set;
   const c = top();
-  return JSON.stringify({ maxZ, maxScale, z: c.z, shownZ: c.shown.z, turn: c.turn, flipped: c.card.faceUp !== was });
+  return JSON.stringify({ maxZ, maxScale, landed, settled, z: c.z, shownZ: c.shown.z, turn: c.turn, flipped: c.card.faceUp !== was });
 })()`));
 check(taps.maxZ <= 18.01 && taps.maxScale <= 1.0001,
   `seven quick taps on flip never lift the card past one flip's height (${taps.maxZ.toFixed(1)} units)`);
 check(taps.z === 0 && taps.shownZ === 0 && taps.turn === 0, 'and leave it flat on the table');
-check(taps.flipped, 'seven flips, played one after another, leave it the other side up');
+check(taps.flipped && taps.landed === 1,
+  `seven taps 30 ms apart are one flip, not a queue of seven (${taps.landed} landed, settled in ${Math.round(taps.settled)} ms)`);
 
 // --- hold'em ----------------------------------------------------------------
 console.log("\nhold'em");
