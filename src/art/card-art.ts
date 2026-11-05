@@ -27,6 +27,9 @@ export const CPU: CanvasRenderingContext2DSettings = { willReadFrequently: true 
 
 let measure: CanvasRenderingContext2D | undefined;
 
+/** Milliseconds a frame for repainting pictures nobody is looking at. */
+const OFFSCREEN_BUDGET_MS = 4;
+
 /** Which file in assets/cards/suits each suit is drawn from. */
 export const STANDARD_SUIT_ART: Readonly<Record<string, string>> = {
   spades: 'spade',
@@ -103,15 +106,32 @@ export class CardArt {
     this.board.touch();
   }
 
-  /** Repaints everything owed one. */
+  /**
+   * Repaints what is owed one: everything on screen now, and of the rest as
+   * much as fits in a few milliseconds, the remainder next frame.
+   *
+   * Without the split, a deck's twelve portraits landing repainted every
+   * warmed cell waiting on them in one frame - most of them cards nobody was
+   * looking at - and changing deck cost a frame of nearly a second.
+   */
   flush(): void {
     if (!this.owed.size) return;
-    const owed = [...this.owed];
-    this.owed.clear();
-    for (const dependent of owed) {
+    const recent = this.board.frames - 2;
+    const deadline = performance.now() + OFFSCREEN_BUDGET_MS;
+    for (const dependent of [...this.owed]) {
+      const region = dependent.region;
       // A region given back to the atlas since is not ours to paint.
-      if (dependent.region.refs > 0) this.repaint(dependent);
+      if (region.refs <= 0) {
+        this.owed.delete(dependent);
+        continue;
+      }
+      const onScreen = (region.shownAt ?? -Infinity) >= recent;
+      if (!onScreen && performance.now() > deadline) continue;
+      this.owed.delete(dependent);
+      this.repaint(dependent);
     }
+    // Something left: come back next frame for it.
+    if (this.owed.size) this.board.touch();
   }
 
   /** Loads an image by URL under a key, once. */
@@ -213,7 +233,7 @@ export class CardArt {
     pen.drawImage(this.mipFor(source, w * scale, h * scale), x, y, w, h);
   }
 
-  private readonly texts = new Map<string, { image: Source; pad: number }>();
+  private readonly texts = new Map<string, { image: Source; pad: number; width: number }>();
 
   /**
    * Fills a line of text at `x` (left edge) and `y` (middle), from a cached
@@ -225,16 +245,18 @@ export class CardArt {
    * text, font, ink and density, every face after copies it.
    */
   text(pen: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, text: string,
-    font: string, size: number, color: string, x: number, y: number): void {
+    font: string, size: number, color: string, x: number, y: number): number {
     const t = pen.getTransform();
     const scale = Math.hypot(t.a, t.b);
     const key = `${text}|${font}|${color}|${scale.toFixed(3)}`;
     let hit = this.texts.get(key);
     if (!hit) {
+      let measured = 0;
       measure ??= document.createElement('canvas').getContext('2d', CPU)!;
       measure.font = font;
       const pad = Math.ceil(size * 0.3);
-      const width = measure.measureText(text).width + pad * 2;
+      measured = measure.measureText(text).width;
+      const width = measured + pad * 2;
       const height = size * 1.6;
       const canvas = document.createElement('canvas');
       canvas.width = Math.max(1, Math.ceil(width * scale));
@@ -246,12 +268,13 @@ export class CardArt {
       out.textBaseline = 'middle';
       out.textAlign = 'left';
       out.fillText(text, pad, height / 2);
-      hit = { image: canvas, pad };
+      hit = { image: canvas, pad, width: measured };
       this.texts.set(key, hit);
       if (this.texts.size > 600) this.texts.delete(this.texts.keys().next().value!);
     }
     const { image, pad } = hit;
     pen.drawImage(image, x - pad, y - (image.height / scale) / 2, image.width / scale, image.height / scale);
+    return hit.width;
   }
 
   /**

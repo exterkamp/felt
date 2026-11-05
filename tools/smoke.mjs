@@ -195,6 +195,23 @@ check(mess.turned > mess.cards * 0.9 && mess.widest <= 12,
 check(mess.settled, 'and drawing it again gives the same angles');
 check(Math.abs(mess.halfWidest - mess.widest / 2) < 0.01, 'half the dial is half the angle');
 
+// The engine owns the pictures: one deck on the table is one sheet of faces
+// and one back, warmed to all fifty-two, and dealing again paints nothing.
+const sheets = JSON.parse(await evaluate(`(async () => {
+  const b = __felt.board; const s = b.services.get('card-sheets');
+  for (let i = 0; i < 40 && s.stats.warming; i++) await new Promise(r => setTimeout(r, 100));
+  const before = b.atlas.paints;
+  document.getElementById('deal').click();
+  await new Promise(r => setTimeout(r, 400));
+  const sheet = __felt.piles().flatMap(p => p.cards)[0].sheet;
+  return JSON.stringify({ ...s.stats, cells: sheet.size, repaints: b.atlas.paints - before,
+    shared: new Set(__felt.piles().flatMap(p => p.cards).map(c => c.sheet)).size });
+})()`));
+check(sheets.faces === 1 && sheets.backs === 1 && sheets.shared === 1,
+  `one deck is one sheet of faces and one back, shared by every card (${sheets.faces} / ${sheets.backs})`);
+check(sheets.cells === 52 && sheets.warming === 0, `the sheet warms itself to the whole deck (${sheets.cells} cells)`);
+check(sheets.repaints === 0, `dealing again paints nothing (${sheets.repaints} paints)`);
+
 // Asleep when nothing moves.
 const idle = await evaluate(`(async () => { const b = __felt.board;
   await new Promise(r => setTimeout(r, 400)); const f = b.frames;

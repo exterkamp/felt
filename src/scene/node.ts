@@ -162,6 +162,13 @@ export abstract class Node implements InstanceItem {
 
   abstract writeInstance(out: Float32Array, offset: number): boolean;
 
+  /**
+   * Called on every visible node just before a frame is drawn, for work that
+   * has to be done before its picture can be - a card's face being painted
+   * the first time anything shows it.
+   */
+  prepare(): void { /* nothing, for most */ }
+
   /** Whether another node sits exactly where this one does, covering it. */
   sameFootprint(other: Node): boolean {
     return other._x === this._x && other._y === this._y && other._z === this._z

@@ -27,6 +27,12 @@ export interface Region {
   /** The cache key it was made under, if any. */
   key?: string;
   refs: number;
+  /**
+   * The last frame anything on the board showed it, stamped by the card that
+   * did. What lets the engine repaint the pictures on screen at once and the
+   * rest when it has a moment.
+   */
+  shownAt?: number;
 }
 
 /** Room left round every region, so filtering never reads a neighbour. */
@@ -73,6 +79,11 @@ export class Atlas {
   generation = 0;
   /** Called when anything is drawn, so the board can schedule a frame. */
   onChange?: () => void;
+  /**
+   * Asked to let go of pictures before the atlas evicts or grows - the card
+   * sheets drop the decks nobody is using. Answers whether it freed anything.
+   */
+  onPressure?: () => boolean;
   /** Receives every painted picture. Without one (in node) paints go nowhere. */
   sink?: AtlasSink;
   private scratch?: HTMLCanvasElement | OffscreenCanvas;
@@ -205,6 +216,7 @@ export class Atlas {
     // Before growing, give back what nobody is looking at: a deck nobody is
     // using any more, a card size the slider has moved past. A new page is a
     // reallocation of the whole texture on the GPU, and is the last resort.
+    this.onPressure?.();
     this.evictUnused();
     const recycled = this.reuse(width, height, true);
     if (recycled) return recycled;

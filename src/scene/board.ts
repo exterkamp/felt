@@ -107,6 +107,7 @@ export class Board {
 
   private readonly items: (Node | BoardMesh)[] = [];
   private sorted = true;
+  private rendering = false;
   private dirty = true;
   private frameRequest = 0;
   private last = 0;
@@ -189,6 +190,9 @@ export class Board {
 
   /** Called by a node's setters. Schedules a frame. */
   touch(): void {
+    // Anything touched while a frame is being drawn - a face painted in the
+    // pre-pass - is in this frame already; asking for another would draw it twice.
+    if (this.rendering) return;
     this.dirty = true;
     this.wake();
   }
@@ -480,15 +484,26 @@ export class Board {
   render(): void {
     for (const run of this.beforeFrame) run();
     this.sort();
-    // A card buried under an identical one casts no shadow; see Node.covered.
-    let above: Node | undefined;
-    for (let i = this.items.length - 1; i >= 0; i--) {
-      const item = this.items[i];
-      if (!(item instanceof Node)) { above = undefined; continue; }
-      if (!item.visible) continue;
-      item.covered = above !== undefined && item.sameFootprint(above);
-      above = item;
+    this.rendering = true;
+    try {
+      // One pass, front to back: what is about to be shown is prepared, and a
+      // card buried under an identical one casts no shadow (Node.covered).
+      let above: Node | undefined;
+      for (let i = this.items.length - 1; i >= 0; i--) {
+        const item = this.items[i];
+        if (!(item instanceof Node)) { above = undefined; continue; }
+        if (!item.visible) continue;
+        item.prepare();
+        item.covered = above !== undefined && item.sameFootprint(above);
+        above = item;
+      }
+      this.draw();
+    } finally {
+      this.rendering = false;
     }
+  }
+
+  private draw(): void {
     this.renderer.frame(this.items as DrawItem[], {
       width: this.width,
       height: this.height,

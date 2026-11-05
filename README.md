@@ -108,11 +108,41 @@ The names were kept wherever the idea survived, so a port is mostly deleting
 | - | `flipCard(board, sprite)`: lift, roll half a turn, land the other side up |
 | - | `board.pick(x, y)`, `board.snapshot()`, `board.keepAwake()` |
 
-A card made before its art has loaded is painted with what is there and
-**repainted in place** when the rest arrives - suits, backs, the index font,
-or a court portrait. Every card sharing that face updates at once, because
-they are all looking at the same pixels. There is no preload phase to get
-wrong.
+## Card sheets: the engine owns the pictures
+
+A `CardSprite` does not paint itself, hold atlas regions or wait for art. It
+is a card, a pose and a handle on two of the engine's **card sheets**
+(`CardSheets.of(board)`):
+
+- a **face sheet** per look - size, layout, stock, inks, court palette,
+  density - with one cell per suit and rank, shared by every card of that
+  deck. The back colour is not part of it, so four seats with four backs
+  share one sheet of faces;
+- a **back sheet** per theme, colour and size.
+
+What the engine does with them:
+
+- **Painted on demand, warmed in the background.** A cell is painted the
+  first time anything shows it, in a pre-pass before that frame is drawn.
+  Once a sheet has been in use for twenty frames the rest of its standard
+  deck is painted at 3 ms a frame, so a card turned over later never waits.
+  A sheet being scrubbed past (a size slider, a theme button) is never
+  warmed.
+- **Late art repaints in place.** A court portrait, the index font or a suit
+  glyph arriving repaints the cells that wanted it. Cells on screen go at
+  once; the rest at 4 ms a frame.
+- **Kept, not dropped.** A sheet nobody is using stays (eight face sheets,
+  sixteen backs), so dealing again, or going back to a deck already seen,
+  paints nothing. Unused sheets are given up, oldest first, only when the
+  atlas needs the room.
+- **A card is a lookup.** It asks its sheet for `card.suit`/`card.rank` every
+  frame, so changing a card's rank shows the new face with nobody telling it;
+  `sprite.restyle(style)` moves it to another deck's sheets.
+
+Painting itself stays off the GPU's critical path. Each picture is rastered
+into a small CPU canvas from CPU-backed sources and shared mip chains; rank
+text is rastered once per size and ink. It is uploaded as premultiplied
+bytes, and the texture array grows by GPU-side copy.
 
 ## The demo
 

@@ -24,7 +24,8 @@ export { Renderer } from './gl/renderer.js';
 export { lensDistance, project, cardRotation, unprojectOntoPlane } from './gl/lens.js';
 
 export { CardSprite } from './art/card-sprite.js';
-export type { CardStyle } from './art/card-sprite.js';
+export { BackSheet, CardSheets, FaceSheet, resolveStyle } from './art/card-sheets.js';
+export type { CardStyle, ResolvedStyle } from './art/card-sheets.js';
 export {
   CardArt, STANDARD_SUIT_ART, loadCardArt, preloadCardArt, suitTexture, ensureArt,
 } from './art/card-art.js';
