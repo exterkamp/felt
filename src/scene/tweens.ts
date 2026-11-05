@@ -158,6 +158,8 @@ export class Tween {
 
 export class Tweens {
   private readonly active: Tween[] = [];
+  /** Called with the step every update until they answer false. */
+  private readonly tickers = new Set<(ms: number) => boolean>();
   /** Called whenever a tween is added, so a sleeping board can wake. */
   onWake?: () => void;
 
@@ -166,6 +168,15 @@ export class Tweens {
     this.active.push(tween);
     this.onWake?.();
     return tween;
+  }
+
+  /**
+   * Runs `step(ms)` on every update, on the same clock as the tweens, until
+   * it answers false. Keeps the board awake while it runs.
+   */
+  tick(step: (ms: number) => boolean): void {
+    this.tickers.add(step);
+    this.onWake?.();
   }
 
   /** `add`, as a promise that resolves when it finishes. */
@@ -184,7 +195,7 @@ export class Tweens {
   }
 
   get count(): number {
-    return this.active.length;
+    return this.active.length + this.tickers.size;
   }
 
   /** Advances every tween by `ms`. Answers whether any are still running. */
@@ -197,7 +208,10 @@ export class Tweens {
         if (at >= 0) this.active.splice(at, 1);
       }
     }
-    return this.active.length > 0;
+    for (const ticker of [...this.tickers]) {
+      if (!ticker(ms)) this.tickers.delete(ticker);
+    }
+    return this.active.length > 0 || this.tickers.size > 0;
   }
 
   /** Steps the clock until nothing is running. For tests and for skipping. */

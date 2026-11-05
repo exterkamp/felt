@@ -105,16 +105,13 @@ describe('the spin', () => {
 });
 
 describe('throwing a card', () => {
-  it('tweens it to the landing place and settles it upright', async () => {
-    const { scene, tweens } = stubScene();
+  it('flies it to the landing place and settles it upright', async () => {
+    const { scene } = stubScene();
     const card = stubCard(0, 0);
     await scene.run(throwCard(scene, card, { x: 200, y: 100 }));
-
-    expect(tweens).toHaveLength(2);           // the flight, then the landing pop
-    expect(tweens[0]['x']).toBe(200);
-    expect(tweens[0]['y']).toBe(100);
-    expect(card.angle).toBe(0);
     expect(card.x).toBe(200);
+    expect(card.y).toBe(100);
+    expect(card.angle).toBe(0);
     expect(card.scaleX).toBe(1);
   });
 
@@ -125,10 +122,39 @@ describe('throwing a card', () => {
     expect(onLand).toHaveBeenCalledOnce();
   });
 
-  it('can be thrown without the landing bounce', async () => {
-    const { scene, tweens } = stubScene();
-    await scene.run(throwCard(scene, stubCard(), { x: 10, y: 10 }, { pop: false }));
-    expect(tweens).toHaveLength(1);
+  it('pops on landing, and can be thrown without the bounce', async () => {
+    for (const pop of [true, false]) {
+      const { scene } = stubScene();
+      const card = stubCard();
+      let biggest = 0;
+      const done = throwCard(scene, card, { x: 10, y: 10 }, { pop, duration: 200 });
+      for (let t = 0; t < 500; t += 10) {
+        scene.tweens.update(10);
+        biggest = Math.max(biggest, card.scaleX);
+      }
+      await done;
+      expect(biggest > 1.01).toBe(pop);
+      expect(card.scaleX).toBeCloseTo(1, 9);
+    }
+  });
+
+  // A card thrown again while it is still in the air flies on from where it
+  // is, rather than both throws fighting over it.
+  it('a second throw takes over from the first, where it is', async () => {
+    const { scene } = stubScene();
+    const card = stubCard(0, 0);
+    const first = throwCard(scene, card, { x: 300, y: 0 }, { duration: 400, pop: false, arc: 30 });
+    for (let t = 0; t < 200; t += 20) scene.tweens.update(20);
+    const halfway = card.x;
+    const second = throwCard(scene, card, { x: 0, y: 300 }, { duration: 400, pop: false, arc: 30 });
+    await first;
+    scene.tweens.update(1);
+    expect(Math.abs(card.x - halfway)).toBeLessThan(5);
+    scene.tweens.flush();
+    await second;
+    expect(card.x).toBe(0);
+    expect(card.y).toBe(300);
+    expect(card.z).toBe(0);
   });
 });
 
@@ -150,12 +176,19 @@ describe('dealing several', () => {
   });
 
   it('leaves a gap between one card and the next', async () => {
-    const { scene, tweens } = stubScene();
-    const cards = [stubCard(), stubCard(), stubCard()];
-    await scene.run(dealCards(scene, cards, { stack, count: 0 }, { stagger: 50, pop: false }));
-    expect(tweens.map((t) => t['delay'])).toEqual([0, 50, 100]);
+    const { scene } = stubScene();
+    const cards = [stubCard(0, 500), stubCard(0, 500), stubCard(0, 500)];
+    const done = dealCards(scene, cards, { stack, count: 0 }, { stagger: 50, pop: false });
+    const moved = () => cards.map((c) => c.y !== 500);
+    scene.tweens.update(30);
+    expect(moved()).toEqual([true, false, false]);
+    scene.tweens.update(30);
+    expect(moved()).toEqual([true, true, false]);
+    scene.tweens.update(50);
+    expect(moved()).toEqual([true, true, true]);
+    scene.tweens.flush();
+    await done;
     expect(cards.map((c) => c.y)).toEqual([0, 20, 40]);
-    expect(tweens.map((t) => t['y'])).toEqual([0, 20, 40]);
   });
 });
 

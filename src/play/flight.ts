@@ -2,6 +2,7 @@ import {
   Hand, Stack, handPositions, nextHandPlace, nextPosition, stackPositions,
 } from '../core/index.js';
 import type { Tweens } from '../scene/tweens.js';
+import { animatorOf } from '../scene/animator.js';
 
 /** Anything with tweens - a board, or a bare `{ tweens }` in a test. */
 export interface TweenHost { readonly tweens: Tweens }
@@ -159,64 +160,65 @@ export function throwCard(
 ): Promise<void> {
   const landing = throwLanding(target);
   const distance = Math.hypot(landing.x - sprite.x, landing.y - sprite.y);
-  const duration = options.duration ?? flightDuration(distance);
   // The target's own angle, when it has one: a card joining a hand has to
   // arrive at the angle that hand holds it at.
   const settleAngle = options.settleAngle ?? landing.angle ?? 0;
   const spins = options.spins ?? 1;
-
   const arc = options.arc ?? 0;
-  const ground = sprite.z ?? 0;
+  let from = { x: 0, y: 0, angle: 0, scaleX: 1, scaleY: 1 };
+  let spinTo = 0;
 
-  return new Promise((resolve) => {
-    const flight: Record<string, unknown> = {
-      targets: sprite,
-      x: landing.x,
-      y: landing.y,
-      angle: spinTarget(sprite.angle, settleAngle, spins),
-      duration,
-      delay: options.delay ?? 0,
-      // Out of the hand fast and slowing into the table, which is how a
-      // thrown thing behaves and what makes the landing read as an arrival
-      // rather than as the end of a slide.
-      ease: options.ease ?? 'Cubic.easeOut',
-      // The arc rides on the flight's own progress rather than a tween of
-      // its own, so it peaks exactly half way along however the flight eases.
-      onUpdate: arc ? (_tween: unknown, _target: unknown, progress: number) => {
-        sprite.z = ground + arc * Math.sin(Math.PI * Math.min(1, Math.max(0, progress)));
-      } : undefined,
-      onComplete: () => {
-        sprite.angle = settleAngle;
-        if (arc) sprite.z = ground;
-        if (options.pop !== false) pop(host, sprite, options.settleScale ?? sprite.scaleX);
-        options.onLand?.();
-        resolve();
-      },
-    };
-    if (options.settleScale !== undefined) {
-      flight['scaleX'] = options.settleScale;
-      flight['scaleY'] = options.settleScale;
-    }
-    host.tweens.add(flight as Parameters<Tweens['add']>[0]);
+  // On the card's `move` channel, above a re-fan: a second throw cuts the
+  // first off where it is and flies on from there; a hand re-fanning around
+  // a card in flight leaves it alone. The rise is an offset, so a throw cut
+  // short leaves nothing in the air.
+  return animatorOf(host).play(sprite, {
+    channel: 'move',
+    policy: 'interrupt',
+    priority: 1,
+    duration: options.duration ?? flightDuration(distance),
+    delay: options.delay ?? 0,
+    // Out of the hand fast and slowing into the table, which is how a thrown
+    // thing behaves and what makes the landing read as an arrival.
+    ease: options.ease ?? 'Cubic.easeOut',
+    start: () => {
+      from = { x: sprite.x, y: sprite.y, angle: sprite.angle, scaleX: sprite.scaleX, scaleY: sprite.scaleY };
+      spinTo = spinTarget(from.angle, settleAngle, spins);
+    },
+    update: (t, offset) => {
+      sprite.x = from.x + (landing.x - from.x) * t;
+      sprite.y = from.y + (landing.y - from.y) * t;
+      sprite.angle = from.angle + (spinTo - from.angle) * t;
+      if (options.settleScale !== undefined) {
+        sprite.scaleX = from.scaleX + (options.settleScale - from.scaleX) * t;
+        sprite.scaleY = from.scaleY + (options.settleScale - from.scaleY) * t;
+      }
+      // The arc rides on the flight's own progress, so it peaks exactly half
+      // way along however the flight eases.
+      offset.z = arc * Math.sin(Math.PI * Math.min(1, Math.max(0, t)));
+    },
+    complete: () => {
+      sprite.angle = settleAngle;
+      if (options.pop !== false) void popCard(host, sprite);
+      options.onLand?.();
+    },
   });
 }
 
 /**
- * A card that arrived under its own steam rather than being set down.
+ * A card that arrived under its own steam rather than being set down: it
+ * overshoots its size by a few per cent and comes back.
  *
- * Its own tween rather than part of the flight, because a card can be flipped
- * or redrawn the moment it lands and the two would fight over scaleX. This
- * only has to leave the card the size it found it.
+ * A scale *offset*, on a channel of its own that restarts when asked again.
+ * The first version tweened `scaleX` to 1.06 of whatever it read, so a card
+ * popped while still popping grew a little more each time.
  */
-function pop(host: TweenHost, sprite: Movable, base: number): void {
-  host.tweens.add({
-    targets: sprite,
-    scaleX: base * POP_SCALE,
-    scaleY: base * POP_SCALE,
-    duration: POP_MS / 2,
-    yoyo: true,
-    ease: 'Quad.easeOut',
-    onComplete: () => { sprite.scaleX = base; sprite.scaleY = base; },
+export function popCard(host: TweenHost, sprite: object, amount = POP_SCALE - 1): Promise<void> {
+  return animatorOf(host).play(sprite, {
+    channel: 'pop',
+    policy: 'interrupt',
+    duration: POP_MS,
+    update: (t, offset) => { offset.scale = 1 + amount * Math.sin(Math.PI * t); },
   });
 }
 

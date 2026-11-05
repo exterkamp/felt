@@ -2,6 +2,7 @@ import type { Region } from '../gl/atlas.js';
 import { INSTANCE_FLOATS } from '../gl/shaders.js';
 import type { InstanceItem } from '../gl/renderer.js';
 import { Mat3, cardRotation, unprojectOntoPlane } from '../gl/lens.js';
+import type { Layered, Offset } from './animator.js';
 
 // Anything drawn on the board: a position, an orientation, a size and a
 // place in the order.
@@ -33,7 +34,7 @@ export interface NodeHost {
 
 let serial = 0;
 
-export abstract class Node implements InstanceItem {
+export abstract class Node implements InstanceItem, Layered {
   readonly drawKind = 'instance' as const;
   readonly serial = serial++;
   protected _x = 0;
@@ -49,6 +50,8 @@ export abstract class Node implements InstanceItem {
   protected _depth = 0;
   protected _visible = true;
   protected destroyed = false;
+  /** What running canned animations add to the pose, drawn but not stored. */
+  private readonly offsets: Offset[] = [];
   /** Whether a pointer can pick it. */
   interactive = false;
   /** Whether the board should drag it about when picked. Implies interactive. */
@@ -113,8 +116,8 @@ export abstract class Node implements InstanceItem {
   get depth(): number { return this._depth; }
   set depth(v: number) { if (v !== this._depth) { this._depth = v; this.board.resort(); } }
 
-  get displayWidth(): number { return this.width * Math.abs(this._scaleX); }
-  get displayHeight(): number { return this.height * Math.abs(this._scaleY); }
+  get displayWidth(): number { return this.width * Math.abs(this.shown.scaleX); }
+  get displayHeight(): number { return this.height * Math.abs(this.shown.scaleY); }
   get isDestroyed(): boolean { return this.destroyed; }
 
   // Phaser's chainable setters, for code that came from there.
@@ -126,9 +129,46 @@ export abstract class Node implements InstanceItem {
   setVisible(visible: boolean): this { this.visible = visible; return this; }
   setInteractive(draggable = false): this { this.interactive = true; this.draggable = draggable; return this; }
 
+  addOffset(offset: Offset): void {
+    this.offsets.push(offset);
+    this.board.touch();
+  }
+
+  removeOffset(offset: Offset): void {
+    const at = this.offsets.indexOf(offset);
+    if (at >= 0) this.offsets.splice(at, 1);
+    this.board.touch();
+  }
+
+  offsetChanged(): void {
+    this.board.touch();
+  }
+
+  /**
+   * The pose actually drawn: the resting pose plus whatever canned
+   * animations are adding to it - a flip's lift and roll, a landing's pop.
+   * The fields (`x`, `z`, `turn` ...) are the resting pose and never hold
+   * an animation's transient value, which is what keeps one animation from
+   * starting off another's half-way point.
+   */
+  get shown(): { x: number; y: number; z: number; angle: number; tilt: number; turn: number;
+    bow: number; scaleX: number; scaleY: number } {
+    const pose = {
+      x: this._x, y: this._y, z: this._z, angle: this._angle, tilt: this._tilt,
+      turn: this._turn, bow: this._bow, scaleX: this._scaleX, scaleY: this._scaleY,
+    };
+    for (const o of this.offsets) {
+      pose.x += o.x; pose.y += o.y; pose.z += o.z; pose.angle += o.angle;
+      pose.tilt += o.tilt; pose.turn += o.turn; pose.bow += o.bow;
+      pose.scaleX *= o.scale; pose.scaleY *= o.scale;
+    }
+    return pose;
+  }
+
   /** Its orientation, as the shader builds it. */
   rotation(): Mat3 {
-    return cardRotation((this._angle * Math.PI) / 180, this._tilt, this._turn);
+    const p = this.shown;
+    return cardRotation((p.angle * Math.PI) / 180, p.tilt, p.turn);
   }
 
   /**
@@ -140,10 +180,10 @@ export abstract class Node implements InstanceItem {
    */
   localPoint(x: number, y: number): { x: number; y: number } | undefined {
     const board = this.board;
-    const cx = board.localLens ? this._x : board.vanishX;
-    const cy = board.localLens ? this._y : board.vanishY;
-    return unprojectOntoPlane(x, y, [this._x, this._y, this._z], this.rotation(),
-      cx, cy, board.distance);
+    const p = this.shown;
+    const cx = board.localLens ? p.x : board.vanishX;
+    const cy = board.localLens ? p.y : board.vanishY;
+    return unprojectOntoPlane(x, y, [p.x, p.y, p.z], this.rotation(), cx, cy, board.distance);
   }
 
   /** Whether a point on the board is over this node. */
@@ -171,6 +211,7 @@ export abstract class Node implements InstanceItem {
 
   /** Whether another node sits exactly where this one does, covering it. */
   sameFootprint(other: Node): boolean {
+    if (this.offsets.length || other.offsets.length) return false;
     return other._x === this._x && other._y === this._y && other._z === this._z
       && other._angle === this._angle && other._tilt === this._tilt && other._turn === this._turn
       && other._bow === this._bow && other._scaleX === this._scaleX && other._scaleY === this._scaleY
@@ -179,15 +220,25 @@ export abstract class Node implements InstanceItem {
   }
 
   /** The first two vec4s, which every node fills the same way. */
-  protected writePose(out: Float32Array, o: number): void {
-    out[o] = this._x;
-    out[o + 1] = this._y;
-    out[o + 2] = this._z;
-    out[o + 3] = (this._angle * Math.PI) / 180;
-    out[o + 4] = this._tilt;
-    out[o + 5] = this._turn;
-    out[o + 6] = this._bow;
+  /** Writes the shown pose, and hands it back for the rest of the instance. */
+  protected writePose(out: Float32Array, o: number): ReturnType<Node['writePoseValues']> {
+    const p = this.writePoseValues();
+    out[o] = p.x;
+    out[o + 1] = p.y;
+    out[o + 2] = p.z;
+    out[o + 3] = (p.angle * Math.PI) / 180;
+    out[o + 4] = p.tilt;
+    out[o + 5] = p.turn;
+    out[o + 6] = p.bow;
     out[o + 7] = this._alpha;
+    return p;
+  }
+
+  private writePoseValues(): Node['shown'] {
+    return this.offsets.length ? this.shown : {
+      x: this._x, y: this._y, z: this._z, angle: this._angle, tilt: this._tilt,
+      turn: this._turn, bow: this._bow, scaleX: this._scaleX, scaleY: this._scaleY,
+    };
   }
 }
 

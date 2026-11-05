@@ -234,6 +234,27 @@ const idle = await evaluate(`(async () => { const b = __felt.board;
   await new Promise(r => setTimeout(r, 1200)); return b.frames - f; })()`);
 check(idle === 0, `a still board draws no frames at all (${idle} in 1.2s)`);
 
+// --- one stack: canned animations tapped fast ------------------------------
+console.log('\none stack');
+await open('one-stack.html', '__felt?.pile?.().length >= 5');
+await until(`__felt.pile().length >= 5 && !__felt.board.tweens.count`, 20000);
+const taps = JSON.parse(await evaluate(`(async () => {
+  const b = __felt.board; const flip = document.getElementById('flip');
+  const top = () => __felt.pile()[__felt.pile().length - 1];
+  const was = top().card.faceUp; let maxZ = 0, maxScale = 0;
+  const watch = () => { const p = top().shown; maxZ = Math.max(maxZ, p.z); maxScale = Math.max(maxScale, p.scaleX); };
+  b.on('update', watch);
+  for (let i = 0; i < 7; i++) { flip.click(); await new Promise(r => setTimeout(r, 30)); }
+  while (b.tweens.count) await new Promise(r => setTimeout(r, 100));
+  b.off('update', watch);
+  const c = top();
+  return JSON.stringify({ maxZ, maxScale, z: c.z, shownZ: c.shown.z, turn: c.turn, flipped: c.card.faceUp !== was });
+})()`));
+check(taps.maxZ <= 18.01 && taps.maxScale <= 1.0001,
+  `seven quick taps on flip never lift the card past one flip's height (${taps.maxZ.toFixed(1)} units)`);
+check(taps.z === 0 && taps.shownZ === 0 && taps.turn === 0, 'and leave it flat on the table');
+check(taps.flipped, 'seven flips, played one after another, leave it the other side up');
+
 // --- hold'em ----------------------------------------------------------------
 console.log("\nhold'em");
 await open('holdem.html', '!!window.__felt?.deck?.().length');
@@ -304,7 +325,8 @@ const turning = JSON.parse(await evaluate(`(async () => {
   // moves a card a few degrees; a spin is the bug.
   const watch = () => {
     for (const c of [...__felt.held(), ...__felt.opposite()]) {
-      if (b.tweens.of(c, 'angle').some(t => t.config.duration !== 160)) { last.delete(c); continue; }
+      // A throw spins on purpose; only what moves a card already held counts.
+      if ((__felt.animator.running(c, 'move')?.priority ?? 0) > 0) { last.delete(c); continue; }
       const was = last.get(c);
       // Whole turns do not count: a throw lands on its angle less the turns
       // it spun, which is the same picture.
@@ -376,7 +398,7 @@ const thrown = JSON.parse(await evaluate(`(async () => {
   const pile = __felt.piles()[2];
   let rose = 0;
   const b = __felt.board;
-  const watch = () => { for (const c of __felt.loose()) rose = Math.max(rose, c.z); };
+  const watch = () => { for (const c of __felt.loose()) rose = Math.max(rose, c.shown.z); };
   b.on('update', watch);
   await __felt.throwAtPoint({ x: 100, y: 560 });
   await __felt.throwAtPile(pile);

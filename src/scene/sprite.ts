@@ -101,16 +101,16 @@ export class Sprite extends Node {
   writeInstance(out: Float32Array, o: number): boolean {
     const region = this._region;
     if (!this._visible || this._alpha <= 0 || !region) return false;
-    const w = this._width * this._scaleX;
-    const h = this._height * this._scaleY;
+    const p = this.writePose(out, o);
+    const w = this._width * p.scaleX;
+    const h = this._height * p.scaleY;
     // The origin is applied by moving the centre, along the sprite's own
     // turned axes, so a label anchored at its left edge rotates about it.
     const dx = (0.5 - this.originX) * w;
     const dy = (0.5 - this.originY) * h;
-    const a = (this._angle * Math.PI) / 180;
-    this.writePose(out, o);
-    out[o] = this._x + dx * Math.cos(a) - dy * Math.sin(a);
-    out[o + 1] = this._y + dx * Math.sin(a) + dy * Math.cos(a);
+    const a = (p.angle * Math.PI) / 180;
+    out[o] = p.x + dx * Math.cos(a) - dy * Math.sin(a);
+    out[o + 1] = p.y + dx * Math.sin(a) + dy * Math.cos(a);
     out[o + 8] = Math.abs(w);
     out[o + 9] = Math.abs(h);
     out[o + 10] = 0;

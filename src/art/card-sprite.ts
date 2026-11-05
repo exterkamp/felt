@@ -119,7 +119,7 @@ export class CardSprite<S extends string = Suit> extends Node {
    * face-down card half way through being flipped over is showing its face.
    */
   get facingSide(): 'face' | 'back' {
-    const turns = Math.round(this._turn / Math.PI);
+    const turns = Math.round(this.shown.turn / Math.PI);
     const flipped = Math.abs(turns) % 2 === 1;
     return this.shownFace !== flipped ? 'face' : 'back';
   }
@@ -163,8 +163,6 @@ export class CardSprite<S extends string = Suit> extends Node {
   writeInstance(out: Float32Array, o: number): boolean {
     if (!this._visible || this._alpha <= 0) return false;
     const m = this.faces.metrics;
-    const sx = Math.abs(this._scaleX);
-    const sy = Math.abs(this._scaleY);
     const up = this.shownFace;
     // Asked of the sheet every frame, so a card whose rank or suit changed
     // shows the new face with nobody telling it to. `prepare` has already
@@ -173,7 +171,9 @@ export class CardSprite<S extends string = Suit> extends Node {
     const backRegion = this.backs.region;
     const front = up ? face : backRegion;
     const back = up ? backRegion : face;
-    this.writePose(out, o);
+    const p = this.writePose(out, o);
+    const sx = Math.abs(p.scaleX);
+    const sy = Math.abs(p.scaleY);
     out[o + 8] = m.width * sx;
     out[o + 9] = m.height * sy;
     out[o + 10] = m.radius * Math.min(sx, sy);

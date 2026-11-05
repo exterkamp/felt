@@ -39,8 +39,10 @@ export { renderTuckBox, tuckBoxTextureKey } from './art/tuck-box-art.js';
 export type { TuckBoxArt } from './art/tuck-box-art.js';
 
 export {
-  dealCards, flightDuration, landingsFor, shortestTurn, spinTarget, throwCard, throwLanding,
+  dealCards, flightDuration, landingsFor, popCard, shortestTurn, spinTarget, throwCard, throwLanding,
 } from './play/flight.js';
+export { Animator, animatorOf, zeroOffset } from './scene/animator.js';
+export type { Canned, Offset, Policy } from './scene/animator.js';
 export type { DealOptions, Movable, ThrowOptions, ThrowTarget, TweenHost } from './play/flight.js';
 export { layHand, orderStack } from './play/order.js';
 export type { LayHandOptions } from './play/order.js';

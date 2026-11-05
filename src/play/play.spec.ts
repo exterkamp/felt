@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { defineHand, defineStack, handPositions, stackDepths } from '../core/index.js';
 import { Tweens } from '../scene/tweens.js';
 import { flipCard } from './flip.js';
+import { popCard, throwCard } from './flight.js';
 import { layHand, orderStack } from './order.js';
 import { RIFFLE_DEPTH, riffleShuffle } from './riffle.js';
 
@@ -69,6 +70,58 @@ describe('the riffle', () => {
     // In the order it was in, and drawn that way rather than in the riffle's band.
     expect(cards.map((c) => c.depth)).toEqual(stackDepths(stack, 52));
     expect(cards.every((c) => c.depth < RIFFLE_DEPTH)).toBe(true);
+  });
+});
+
+describe('canned animations, tapped fast', () => {
+  const flippable = () => ({
+    ...card(), card: { faceUp: false },
+    setFaceUp(up: boolean) { this.card.faceUp = up; },
+  });
+
+  // The bug: a flip tapped mid-flip lifted from the first one's height, and
+  // a few quick taps left the card floating - and, through the lens, larger.
+  it('five quick flips are five flips, and leave the card on the table', async () => {
+    const h = host();
+    const sprite = flippable();
+    let highest = 0;
+    const flips = [];
+    for (let i = 0; i < 5; i++) {
+      flips.push(flipCard(h, sprite, { lift: 18 }));
+      h.tweens.update(40);
+      highest = Math.max(highest, sprite.z);
+    }
+    for (let i = 0; i < 200; i++) { h.tweens.update(16); highest = Math.max(highest, sprite.z); }
+    await Promise.all(flips);
+    expect(highest).toBeLessThanOrEqual(18.0001);
+    expect(sprite.z).toBe(0);
+    expect(sprite.turn).toBe(0);
+    expect(sprite.card.faceUp).toBe(true);   // odd number of flips
+  });
+
+  it('a pop popped again does not grow the card', async () => {
+    const h = host();
+    const sprite = card();
+    for (let i = 0; i < 10; i++) {
+      void popCard(h, sprite);
+      h.tweens.update(30);
+    }
+    h.tweens.flush();
+    expect(sprite.scaleX).toBeCloseTo(1, 9);
+  });
+
+  it('a re-fan leaves a card in flight to its throw', async () => {
+    const h = host();
+    const hand = defineHand({ id: 'h', x: 100, y: 300, step: 10, maxSpread: 0, radius: 200 });
+    const cards = [card(), card()];
+    const thrown = throwCard(h, cards[1], { hand, count: 1 }, { duration: 300, pop: false });
+    h.tweens.update(50);
+    layHand(h, cards, hand, { duration: 100 });
+    h.tweens.flush();
+    await thrown;
+    const places = handPositions(hand, 2);
+    expect(cards[1].x).toBeCloseTo(places[1].x);
+    expect(cards[0].x).toBeCloseTo(places[0].x);
   });
 });
 

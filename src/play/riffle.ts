@@ -1,6 +1,10 @@
 import { Stack, riffleSplit, stackPositions } from '../core/index.js';
 import type { TweenHost } from './flight.js';
 import { orderStack } from './order.js';
+import { animatorOf } from '../scene/animator.js';
+
+/** Cards being riffled, and the riffle they are in. */
+const riffling = new WeakMap<object, Promise<void>>();
 
 // Shuffling, as a thing you can watch.
 //
@@ -78,6 +82,28 @@ export const RIFFLE_HAND_DEPTH = RIFFLE_DEPTH + 1_000;
 export async function riffleShuffle(
   host: TweenHost, sprites: readonly Riffled[], stack: Stack, options: RiffleOptions = {},
 ): Promise<void> {
+  if (sprites.length < 2) return;
+  // Asked again while it is running - a shuffle button tapped twice - the
+  // deck is already being shuffled: hand back that shuffle rather than start
+  // a second one fighting it for every card.
+  const already = sprites.map((sprite) => riffling.get(sprite)).find(Boolean);
+  if (already) return already;
+  const run = riffle(host, sprites, stack, options);
+  for (const sprite of sprites) riffling.set(sprite, run);
+  try {
+    await run;
+  } finally {
+    for (const sprite of sprites) if (riffling.get(sprite) === run) riffling.delete(sprite);
+  }
+}
+
+async function riffle(
+  host: TweenHost, sprites: readonly Riffled[], stack: Stack, options: RiffleOptions,
+): Promise<void> {
+  // Whatever else the cards were doing ends first, at its end: a flip in
+  // the middle of a riffle is a card the riffle cannot square.
+  const animator = animatorOf(host);
+  for (const sprite of sprites) animator.finish(sprite);
   const rounds = options.rounds ?? 1;
   const spread = options.spread ?? 54;
   const duration = options.duration ?? 170;
@@ -91,7 +117,6 @@ export async function riffleShuffle(
   const turn = options.turn ?? 0.34;
   const hold = options.hold ?? 10;
   const random = options.random ?? Math.random;
-  if (sprites.length < 2) return;
 
   const home = stackPositions(stack, sprites.length);
   const reach = new Array<number>(sprites.length).fill(1);

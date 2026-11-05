@@ -1,5 +1,6 @@
 import { Hand, Stack, handPositions, stackDepths } from '../core/index.js';
 import { TweenHost, shortestTurn } from './flight.js';
+import { animatorOf } from '../scene/animator.js';
 
 // Which card of a pile is drawn in front, and a hand re-fanned.
 //
@@ -55,23 +56,41 @@ export function layHand(
   const places = handPositions(hand, sprites.length);
   const depths = stackDepths(hand, sprites.length);
   const duration = options.duration ?? 160;
+  const animator = animatorOf(host);
   sprites.forEach((sprite, i) => {
     const place = places[i];
     sprite.depth = (options.base ?? 0) + depths[i];
     if (options.except?.includes(sprite)) return;
+    // A card a throw is carrying is the throw's: the re-fan yields to it
+    // (lower priority on the shared `move` channel) and the card lands where
+    // it was thrown, at the angle the hand will hold it. Anything else
+    // moving it - an earlier re-fan - is cut off where it is, and this one
+    // goes on from there.
     if (duration <= 0) {
+      if (animator.busy(sprite, 'move')) {
+        void animator.play(sprite, { channel: 'move', policy: 'interrupt', duration: 0,
+          update: () => { sprite.x = place.x; sprite.y = place.y; sprite.angle = place.angle; } });
+        return;
+      }
       sprite.x = place.x;
       sprite.y = place.y;
       sprite.angle = place.angle;
       return;
     }
-    host.tweens.add({
-      targets: sprite,
-      x: place.x,
-      y: place.y,
-      angle: shortestTurn(sprite.angle, place.angle),
+    let from = { x: 0, y: 0, angle: 0, to: 0 };
+    void animator.play(sprite, {
+      channel: 'move',
+      policy: 'interrupt',
       duration,
       ease: options.ease ?? 'Cubic.easeOut',
+      start: () => {
+        from = { x: sprite.x, y: sprite.y, angle: sprite.angle, to: shortestTurn(sprite.angle, place.angle) };
+      },
+      update: (t) => {
+        sprite.x = from.x + (place.x - from.x) * t;
+        sprite.y = from.y + (place.y - from.y) * t;
+        sprite.angle = from.angle + (from.to - from.angle) * t;
+      },
     });
   });
 }
