@@ -73,6 +73,8 @@ function shade(color: number, factor: number): number {
 const KEEP_FACES = 8;
 const KEEP_BACKS = 16;
 /** Milliseconds a frame spent painting cells nobody is showing yet. */
+/** A frame's warming while cards wait for the sheet: they are not drawn till it is done. */
+const LOADING_BUDGET_MS = 10;
 const PREWARM_BUDGET_MS = 3;
 /**
  * Frames a sheet has to stay in use before it is warmed. A deck being
@@ -148,6 +150,40 @@ export class FaceSheet {
     art.paintTracked(region, (lookup) => this.painter(lookup, art, suit, rank, ink, courtKey));
     return region;
   }
+
+  /**
+   * Whether every face is finished: the standard deck and anything else
+   * asked of it painted, with no font, pip or portrait still on its way.
+   * Until then a card on a board that waits for art is not drawn from it.
+   */
+  ready(): boolean {
+    if (this.wasReady && this.cells.size === this.readyCells) return true;
+    // Asked by every card of the deck every frame: only worked out again
+    // when a cell or some art has changed since.
+    const version = CardArt.of(this.board).version;
+    if (this.checkedAt === version && this.cells.size === this.checkedCells) return false;
+    this.checkedAt = version;
+    this.checkedCells = this.cells.size;
+    const { done, total } = this.progress();
+    this.wasReady = done === total;
+    if (this.wasReady) this.readyCells = this.cells.size;
+    return this.wasReady;
+  }
+
+  /** Finished faces, of all it will hold. */
+  progress(): { done: number; total: number } {
+    const art = CardArt.of(this.board);
+    let done = 0;
+    for (const region of this.cells.values()) if (art.finished(region)) done++;
+    let total = this.cells.size;
+    for (const suit of SUITS) for (const rank of RANKS) if (!this.cells.has(`${suit}|${rank}`)) total++;
+    return { done, total };
+  }
+
+  private wasReady = false;
+  private readyCells = 0;
+  private checkedAt = -1;
+  private checkedCells = -1;
 
   /** Whether a face has been painted. */
   has(suit: string, rank: string): boolean {
@@ -258,7 +294,7 @@ export class BackSheet {
   users = 0;
   readonly region: Region;
 
-  constructor(board: Board, readonly key: string, theme: DeckTheme, color: number,
+  constructor(board: Board, readonly key: string, theme: DeckTheme, readonly color: number,
     metrics: CardFaceMetrics, ratio: number) {
     ensureArt(board, theme, 'spades');
     this.board = board;
@@ -277,6 +313,11 @@ export class BackSheet {
   }
 
   private readonly board: Board;
+
+  /** Whether the back is finished: painted, with its theme's picture if it has one coming. */
+  ready(): boolean {
+    return CardArt.of(this.board).finished(this.region);
+  }
 
   dispose(): void {
     this.board.atlas.release(this.region);
@@ -358,8 +399,15 @@ export class CardSheets {
     return sheets;
   }
 
-  /** A face sheet for this style, counted. Release it when done. */
-  acquireFaces(style: ResolvedStyle): FaceSheet {
+  /**
+   * A face sheet for this style, counted. Release it when done.
+   *
+   * `later` is for a card moving to it from a look it can go on showing - a
+   * size slider being dragged - which warms it only once it has been wanted
+   * for a while. Anything else warms at once: a card waiting for its sheet is
+   * a card not on the table.
+   */
+  acquireFaces(style: ResolvedStyle, later = false): FaceSheet {
     const key = faceKey(style);
     let sheet = this.faces.get(key);
     if (!sheet) {
@@ -367,7 +415,7 @@ export class CardSheets {
       this.faces.set(key, sheet);
     }
     if (sheet.users++ === 0) this.idleFaces.delete(sheet);
-    if (sheet.size < SUITS.length * RANKS.length) this.startWarming(sheet);
+    if (sheet.size < SUITS.length * RANKS.length) this.startWarming(sheet, later);
     return sheet;
   }
 
@@ -425,8 +473,29 @@ export class CardSheets {
     return dropped;
   }
 
-  private startWarming(sheet: FaceSheet): void {
-    if (!this.warming.has(sheet)) sheet.warmFrom = this.board.frames + WARM_AFTER_FRAMES;
+  /** Whether every sheet a card is using is finished. */
+  ready(): boolean {
+    for (const sheet of this.faces.values()) if (sheet.users > 0 && !sheet.ready()) return false;
+    for (const sheet of this.backs.values()) if (sheet.users > 0 && !sheet.ready()) return false;
+    return true;
+  }
+
+  /** The sheets cards are using, and how far each has got. */
+  progress(): { key: string; kind: 'faces' | 'back'; done: number; total: number }[] {
+    const out: { key: string; kind: 'faces' | 'back'; done: number; total: number }[] = [];
+    for (const sheet of this.faces.values()) {
+      if (sheet.users > 0) out.push({ key: sheet.key, kind: 'faces', ...sheet.progress() });
+    }
+    for (const sheet of this.backs.values()) {
+      if (sheet.users > 0) out.push({ key: sheet.key, kind: 'back', done: sheet.ready() ? 1 : 0, total: 1 });
+    }
+    return out;
+  }
+
+  private startWarming(sheet: FaceSheet, later = false): void {
+    const from = this.board.frames + (later ? WARM_AFTER_FRAMES : 0);
+    if (!this.warming.has(sheet)) sheet.warmFrom = from;
+    else sheet.warmFrom = Math.min(sheet.warmFrom, from);
     this.warming.add(sheet);
     // The board would go to sleep with cells still unpainted; keep it awake
     // only while there is warming to do.
@@ -439,7 +508,11 @@ export class CardSheets {
    */
   private prewarm(): void {
     if (!this.warming.size) return;
-    const deadline = performance.now() + PREWARM_BUDGET_MS;
+    // A sheet that cards are waiting on is warmed harder: nothing else is
+    // being drawn from it, so the frame has the time.
+    const waiting = this.board.waitForArt && [...this.warming].some((sheet) =>
+      sheet.users > 0 && this.board.frames >= sheet.warmFrom && !sheet.ready());
+    const deadline = performance.now() + (waiting ? LOADING_BUDGET_MS : PREWARM_BUDGET_MS);
     const order = [...this.warming].reverse();
     for (const sheet of order) {
       if (sheet.users === 0) {

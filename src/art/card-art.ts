@@ -54,7 +54,25 @@ export interface ArtLookup {
  * it was asked for: a region given back and reused for another picture has
  * another key, and the old painter must not land on the new picture.
  */
-interface Dependent { region: Region; key: string | undefined; paint: (art: ArtLookup) => Painter }
+interface Dependent {
+  region: Region; key: string | undefined; paint: (art: ArtLookup) => Painter;
+  /** What its last paint asked for and did not get. */
+  missing: string[];
+}
+
+/** Where one piece of art is: arriving, here, or never coming. */
+export type ArtStatus = 'pending' | 'loaded' | 'failed';
+
+/** What kind of art a key is, for anyone reporting on loading. */
+export type ArtKind = 'font' | 'suit' | 'back' | 'court' | 'other';
+
+export function artKind(key: string): ArtKind {
+  if (key === FONT_ASSET) return 'font';
+  if (key.startsWith('suit:')) return 'suit';
+  if (key.startsWith('back:')) return 'back';
+  if (key.startsWith('pce-court-')) return 'court';
+  return 'other';
+}
 
 /** Stands for the faces' fonts having loaded. Nothing is drawn from it. */
 export const FONT_ASSET = 'font:faces';
@@ -70,6 +88,15 @@ export class CardArt {
   private readonly inked = new Map<string, Source>();
   /** Regions owed a repaint, done once each just before the next frame. */
   private readonly owed = new Set<Dependent>();
+  /** Art something has started getting, and has not got yet. */
+  private readonly expected = new Set<string>();
+  /** Art that was asked for and will not come: a 404, a court that threw. */
+  private readonly failed = new Set<string>();
+  /** Every key ever expected, in the order asked, for progress reports. */
+  private readonly known = new Set<string>();
+  private readonly painted = new WeakMap<Region, Dependent>();
+  /** Goes up whenever anything that `finished` answers from changes. */
+  version = 0;
 
   constructor(readonly board: Board) {
     // Batched: a face waiting on the font and on its court, both of which
@@ -77,11 +104,11 @@ export class CardArt {
     // twelve courts arriving in twelve tasks cost twelve repaints per face
     // waiting on each, not one per frame per arrival.
     board.beforeRender(() => this.flush());
-    void fontsReady().then(() => {
+    this.expect(FONT_ASSET, fontsReady().then(() => {
       const token = document.createElement('canvas');
       token.width = token.height = 1;
       this.provide(FONT_ASSET, token);
-    });
+    }));
   }
 
   static of(board: Board): CardArt {
@@ -101,9 +128,64 @@ export class CardArt {
     return this.assets.has(key);
   }
 
+  /**
+   * Notes that a piece of art is on its way, by whatever means: a load, a
+   * court render. Until it lands or the job ends without it, anything painted
+   * without it is not finished. A job that ends without providing it fails it.
+   */
+  expect(key: string, job: Promise<unknown>): void {
+    if (this.assets.has(key)) return;
+    this.known.add(key);
+    this.failed.delete(key);
+    this.expected.add(key);
+    this.version++;
+    const settle = () => { if (!this.assets.has(key)) this.fail(key); };
+    void job.then(settle, settle);
+  }
+
+  /** Gives up on a piece of art: cards waiting for it are finished without it. */
+  fail(key: string): void {
+    if (this.assets.has(key)) return;
+    this.expected.delete(key);
+    this.failed.add(key);
+    this.version++;
+    this.board.touch();
+  }
+
+  /** Where a piece of art is, or undefined if nothing ever asked for it. */
+  status(key: string): ArtStatus | undefined {
+    if (this.assets.has(key)) return 'loaded';
+    if (this.failed.has(key)) return 'failed';
+    if (this.expected.has(key)) return 'pending';
+    return undefined;
+  }
+
+  /** Every piece of art asked for so far, and where it is. */
+  report(): { key: string; kind: ArtKind; status: ArtStatus }[] {
+    return [...this.known].map((key) => ({ key, kind: artKind(key), status: this.status(key)! }));
+  }
+
+  /**
+   * Whether a region is finished: painted, with nothing it asked for still
+   * on its way. Art that failed, or that nobody is getting, does not hold it.
+   * A region this never painted (a graphic, a label) is finished.
+   */
+  finished(region: Region): boolean {
+    const dependent = this.painted.get(region);
+    if (!dependent) return true;
+    if (dependent.key !== region.key) return true;
+    if (this.owed.has(dependent)) return false;
+    for (const key of dependent.missing) if (this.expected.has(key)) return false;
+    return true;
+  }
+
   /** Puts an asset in, and repaints everything that was waiting for it. */
   provide(key: string, source: Source): void {
     this.assets.set(key, source);
+    this.known.add(key);
+    this.expected.delete(key);
+    this.failed.delete(key);
+    this.version++;
     const waiting = this.waiting.get(key);
     if (!waiting) return;
     this.waiting.delete(key);
@@ -167,6 +249,7 @@ export class CardArt {
       this.provide(key, canvas);
     })();
     this.loading.set(key, pending);
+    this.expect(key, pending);
     return pending;
   }
 
@@ -175,7 +258,9 @@ export class CardArt {
    * be painted again for anything it asked for and did not get.
    */
   paintTracked(region: Region, paint: (art: ArtLookup) => Painter): void {
-    this.repaint({ region, key: region.key, paint });
+    const dependent: Dependent = { region, key: region.key, paint, missing: [] };
+    this.painted.set(region, dependent);
+    this.repaint(dependent);
   }
 
   private repaint(dependent: Dependent): void {
@@ -189,6 +274,8 @@ export class CardArt {
       },
     };
     this.board.atlas.paint(dependent.region, dependent.paint(lookup), () => this.repaint(dependent));
+    dependent.missing = missing;
+    this.version++;
     for (const key of missing) {
       let set = this.waiting.get(key);
       if (!set) this.waiting.set(key, (set = new Set()));

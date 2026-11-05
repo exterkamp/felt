@@ -36,6 +36,14 @@ export class CardSprite<S extends string = Suit> extends Node {
   private shadow: number;
   private readonly sheets: CardSheets;
   private readonly boardRatio: number;
+  private readonly waitForArt: boolean;
+  /**
+   * The finished look it goes on showing after a restyle, until the new
+   * one's sheets are finished too. Held, so the engine keeps it.
+   */
+  private held?: { faces: FaceSheet; backs: BackSheet };
+  /** Its own sheets, in the shape `drawn` answers with - kept, not made per frame. */
+  private readonly current: { faces: FaceSheet; backs: BackSheet };
 
   // Generic in the suit, because a game that declares one with `defineSuits`
   // has to be able to draw it.
@@ -43,9 +51,11 @@ export class CardSprite<S extends string = Suit> extends Node {
     super(board);
     this.sheets = CardSheets.of(board);
     this.boardRatio = board.pixelRatio;
+    this.waitForArt = board.waitForArt;
     this.resolved = resolveStyle(style, board.pixelRatio);
     this.faces = this.sheets.acquireFaces(this.resolved);
     this.backs = this.sheets.acquireBack(this.resolved);
+    this.current = { faces: this.faces, backs: this.backs };
     this.shadow = style.shadow ?? 1;
     this.attach();
   }
@@ -67,10 +77,21 @@ export class CardSprite<S extends string = Suit> extends Node {
    */
   restyle(style: CardStyle): this {
     const next = resolveStyle(style, this.boardRatio);
-    const faces = this.sheets.acquireFaces(next);
+    // On a board that waits for art, a card already showing a finished look
+    // goes on showing it until the new one is finished - so a deck switched
+    // or a size dragged never blinks the cards out. The look it is leaving
+    // stays held till then.
+    const showing = this.waitForArt
+      ? this.held ?? (this.faces.ready() && this.backs.ready() ? { faces: this.faces, backs: this.backs } : undefined)
+      : undefined;
+    const faces = this.sheets.acquireFaces(next, showing !== undefined);
     const backs = this.sheets.acquireBack(next);
-    this.sheets.releaseFaces(this.faces);
-    this.sheets.releaseBack(this.backs);
+    if (showing && !this.held) {
+      this.held = showing;
+    } else {
+      this.sheets.releaseFaces(this.faces);
+      this.sheets.releaseBack(this.backs);
+    }
     this.faces = faces;
     this.backs = backs;
     this.resolved = next;
@@ -137,6 +158,29 @@ export class CardSprite<S extends string = Suit> extends Node {
     return this;
   }
 
+  /**
+   * Whether it is being drawn: on a board that waits for art, not until its
+   * sheets - or the look it is changing from - are finished.
+   */
+  get revealed(): boolean {
+    return this.drawn() !== undefined;
+  }
+
+  /** The sheets it is drawn from this frame, if any. */
+  private drawn(): { faces: FaceSheet; backs: BackSheet } | undefined {
+    if (!this.waitForArt || (this.faces.ready() && this.backs.ready())) {
+      if (this.held) {
+        this.sheets.releaseFaces(this.held.faces);
+        this.sheets.releaseBack(this.held.backs);
+        this.held = undefined;
+      }
+      this.current.faces = this.faces;
+      this.current.backs = this.backs;
+      return this.current;
+    }
+    return this.held;
+  }
+
   /** The two pictures it is showing, for tests and for anything snapshotting a card. */
   get regions(): { face: Region; back: Region } {
     return { face: this.faces.cell(this.card.suit, this.card.rank), back: this.backs.region };
@@ -147,6 +191,10 @@ export class CardSprite<S extends string = Suit> extends Node {
     const frame = this.boardFrames();
     this.faces.cell(this.card.suit, this.card.rank).shownAt = frame;
     this.backs.region.shownAt = frame;
+    if (this.held) {
+      this.held.faces.cell(this.card.suit, this.card.rank).shownAt = frame;
+      this.held.backs.region.shownAt = frame;
+    }
   }
 
   private boardFrames(): number {
@@ -155,6 +203,11 @@ export class CardSprite<S extends string = Suit> extends Node {
 
   override destroy(): void {
     if (this.destroyed) return;
+    if (this.held) {
+      this.sheets.releaseFaces(this.held.faces);
+      this.sheets.releaseBack(this.held.backs);
+      this.held = undefined;
+    }
     this.sheets.releaseFaces(this.faces);
     this.sheets.releaseBack(this.backs);
     super.destroy();
@@ -162,13 +215,17 @@ export class CardSprite<S extends string = Suit> extends Node {
 
   writeInstance(out: Float32Array, o: number): boolean {
     if (!this._visible || this._alpha <= 0) return false;
-    const m = this.faces.metrics;
+    // Not drawn at all until its art is finished: no card is ever seen
+    // half-painted and then filling in.
+    const sheets = this.drawn();
+    if (!sheets) return false;
+    const m = sheets.faces.metrics;
     const up = this.shownFace;
     // Asked of the sheet every frame, so a card whose rank or suit changed
     // shows the new face with nobody telling it to. `prepare` has already
     // had it painted, so this is a lookup.
-    const face = this.faces.cell(this.card.suit, this.card.rank);
-    const backRegion = this.backs.region;
+    const face = sheets.faces.cell(this.card.suit, this.card.rank);
+    const backRegion = sheets.backs.region;
     const front = up ? face : backRegion;
     const back = up ? backRegion : face;
     const p = this.writePose(out, o);
@@ -184,8 +241,8 @@ export class CardSprite<S extends string = Suit> extends Node {
     out[o + 21] = back.page;
     out[o + 22] = 1;   // a card
     out[o + 23] = this.covered ? 0 : this.shadow;
-    const faceEdge = packColor(this.faces.edge);
-    const backEdge = packColor(this.resolved.backColor);
+    const faceEdge = packColor(sheets.faces.edge);
+    const backEdge = packColor(sheets.backs.color);
     out[o + 24] = up ? faceEdge : backEdge;
     out[o + 25] = up ? backEdge : faceEdge;
     out[o + 26] = (up ? FACE_EDGE : BACK_EDGE) * sx;

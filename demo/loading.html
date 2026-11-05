@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>felt — loading</title>
+    <style>
+      @font-face {
+        font-family: 'Cinzel';
+        src: url('./fonts/cinzel-latin.woff2') format('woff2');
+        font-weight: 400 900;
+        font-display: block;
+      }
+      @font-face {
+        font-family: 'Jost';
+        src: url('./fonts/jost-latin.woff2') format('woff2');
+        font-weight: 300 700;
+        font-display: block;
+      }
+      @font-face {
+        font-family: 'Archivo';
+        src: url('./fonts/archivo-latin.woff2') format('woff2');
+        font-weight: 500 700;
+        font-display: block;
+      }
+      html, body {
+        margin: 0;
+        height: 100%;
+        background: #0b2119;
+        color: #cfead0;
+        font-family: 'Jost', system-ui, sans-serif;
+      }
+      body { display: flex; flex-direction: column; align-items: center; gap: 0.6rem; padding: 0.8rem; box-sizing: border-box; }
+      h1 { font-family: 'Cinzel', Georgia, serif; font-size: 1.1rem; letter-spacing: 0.06em; margin: 0; color: #fdfdfd; text-transform: uppercase; }
+      p { margin: 0; font-size: 0.8rem; text-align: center; max-width: 30rem; color: #9fc4a4; }
+      /* The canvas handles its own gestures; without this a drag is also a
+         page scroll on a touchscreen. */
+      #board { width: min(480px, 100%); flex: 1; touch-action: none; }
+      .row { display: flex; gap: 0.5rem; align-items: center; }
+      a { color: #ffd166; font-size: 0.8rem; }
+      button {
+        font-family: 'Cinzel', Georgia, serif; font-size: 0.75rem; letter-spacing: 0.05em;
+        text-transform: uppercase; color: #fdfdfd; background: #17594a;
+        border: 1px solid #cfead0; border-radius: 4px; padding: 0.4rem 0.8rem; cursor: pointer;
+      }
+      .home {
+        position: fixed; top: 0.55rem; left: 0.6rem; z-index: 20;
+        font-family: 'Cinzel', Georgia, serif; font-size: 0.66rem;
+        letter-spacing: 0.05em; text-transform: uppercase; text-decoration: none;
+        color: #fdfdfd; background: #17594a; border: 1px solid #cfead0;
+        border-radius: 4px; padding: 0.28rem 0.5rem; line-height: 1;
+      }
+      .home:hover, .home:focus-visible { border-color: #ffd166; color: #ffd166; }
+      label { font-size: 0.72rem; display: flex; align-items: center; gap: 0.35rem; color: #9fc4a4; }
+      input[type=range] { width: 7rem; accent-color: #ffd166; }
+      label code { font-size: 0.68rem; color: #cfead0; font-family: ui-monospace, monospace; min-width: 2.2rem; }
+      #board { flex: none; }
+      .panel { width: min(520px, 100%); display: grid; gap: 0.35rem; }
+      .stage { display: grid; grid-template-columns: 9.5rem 1fr 6.5rem; gap: 0.5rem; align-items: center; font-size: 0.74rem; }
+      .stage .name { color: #cfead0; }
+      /* spans, so block for the width to count */
+      .stage .bar, .stage .fill { display: block; }
+      .stage .bar { height: 0.6rem; background: #0f3a2f; border: 1px solid #2a6b58; border-radius: 3px; overflow: hidden; }
+      .stage .fill { height: 100%; width: 0; background: #7fae86; transition: width 80ms linear; }
+      .stage.done .fill { background: #ffd166; }
+      .stage.failed .fill { background: #ff8a8a; }
+      .stage .count { font-family: ui-monospace, monospace; font-size: 0.68rem; color: #9fc4a4; text-align: right; }
+      #verdict { font-family: 'Cinzel', Georgia, serif; font-size: 0.85rem; letter-spacing: 0.05em; color: #ffd166; text-align: center; }
+      #verdict.waiting { color: #9fc4a4; }
+      #waiting, #log { font-family: ui-monospace, monospace; font-size: 0.64rem; color: #7fae86; margin: 0; white-space: pre-wrap; max-width: 520px; width: 100%; }
+      #log { max-height: 9rem; overflow: auto; border-top: 1px solid #2a6b58; padding-top: 0.3rem; }
+    </style>
+  </head>
+  <body>
+    <a class="home" href="./">&larr; Demos</a>
+    <h1>Loading</h1>
+    <p>
+      What the engine does between the page opening and the first card being
+      drawn. No card is drawn until its deck's sheets are finished &mdash; every
+      face painted, with its fonts, pips and portraits &mdash; so the deck below
+      appears all at once, finished, or not at all.
+    </p>
+    <div id="board"></div>
+    <div id="verdict" class="waiting">loading…</div>
+    <div class="panel" id="stages"></div>
+    <pre id="waiting"></pre>
+    <div class="row">
+      <button id="reload">Reload</button>
+      <button id="restyle">Change deck</button>
+      <button id="lose">Lose context</button>
+      <button id="mode">Draw at once</button>
+    </div>
+    <pre id="log"></pre>
+    <script type="module" src="./loading.ts"></script>
+  </body>
+</html>

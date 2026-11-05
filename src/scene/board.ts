@@ -43,6 +43,14 @@ export interface BoardOptions {
    * the middle of the board (`'board'`, the true picture).
    */
   lens?: 'local' | 'board';
+  /**
+   * Whether a card waits to be drawn until its deck's sheets are finished -
+   * every face painted, with its fonts, pips and portraits. Default true: no
+   * card ever appears half-painted and then fills in. A card restyled to a
+   * look not yet ready goes on showing the old one until it is. False draws
+   * every card at once, with whatever art has arrived.
+   */
+  waitForArt?: boolean;
 }
 
 export interface BoardPointer {
@@ -104,6 +112,10 @@ export class Board {
   readonly vanishY: number;
   /** Anything the art layer wants to hang off the board. */
   readonly services = new Map<string, unknown>();
+  /** See `BoardOptions.waitForArt`. */
+  readonly waitForArt: boolean;
+  /** When the board was made, by `performance.now()`: loading is timed from here. */
+  readonly createdAt = performance.now();
 
   private readonly items: (Node | BoardMesh)[] = [];
   private sorted = true;
@@ -139,6 +151,7 @@ export class Board {
     this.pixelRatio = options.pixelRatio ?? window.devicePixelRatio ?? 1;
     this.distance = lensDistance(options.fov ?? 45, options.height);
     this.localLens = (options.lens ?? 'local') === 'local';
+    this.waitForArt = options.waitForArt ?? true;
     this.vanishX = options.width / 2;
     this.vanishY = options.height / 2;
     this.background = options.transparent ? [0, 0, 0, 0] : cssToRgba(options.backgroundColor);

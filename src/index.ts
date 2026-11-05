@@ -26,6 +26,9 @@ export { Renderer } from './gl/renderer.js';
 export { lensDistance, project, cardRotation, unprojectOntoPlane } from './gl/lens.js';
 
 export { CardSprite } from './art/card-sprite.js';
+export { cardsReady, loadingReport } from './art/loading.js';
+export type { LoadingReport, LoadingStage, LoadingStageId } from './art/loading.js';
+export type { ArtKind, ArtStatus } from './art/card-art.js';
 export { BackSheet, CardSheets, FaceSheet, resolveStyle } from './art/card-sheets.js';
 export type { CardStyle, ResolvedStyle } from './art/card-sheets.js';
 export {

@@ -101,7 +101,7 @@ console.log(`smoking ${host}`);
 await send('Page.navigate', { url: `${host}/` });
 await sleep(700);
 const tiles = JSON.parse(await evaluate(`JSON.stringify([...document.querySelectorAll('a.demo')].map(a => a.href))`));
-check(tiles.length === 10, `the home screen lists ten demos (${tiles.length})`);
+check(tiles.length === 11, `the home screen lists eleven demos (${tiles.length})`);
 let reachable = 0;
 let wayBack = 0;
 let boards = 0;
@@ -234,6 +234,42 @@ const idle = await evaluate(`(async () => { const b = __felt.board;
   await new Promise(r => setTimeout(r, 1200)); return b.frames - f; })()`);
 check(idle === 0, `a still board draws no frames at all (${idle} in 1.2s)`);
 
+// --- loading: no card before its sheets are finished ------------------------
+console.log('\nloading');
+await open('loading.html', '!!window.__felt?.frames');
+const cameUp = await until(`__felt.loadingReport().ready && __felt.frames().some(f => f.instances)`, 30000);
+check(cameUp, 'the deck comes up');
+const load = JSON.parse(await evaluate(`JSON.stringify((() => {
+  const r = __felt.loadingReport(); const frames = __felt.frames();
+  const early = frames.filter(f => !f.ready);
+  const first = frames.find(f => f.instances > 0);
+  return { stages: r.stages, readyAt: r.readyAt, early: early.length,
+    earlyDrawn: early.filter(f => f.instances > 0).length, first,
+    revealed: __felt.cards().filter(c => c.revealed).length };
+})())`));
+check(load.early > 0 && load.earlyDrawn === 0,
+  `no card is drawn before the engine says its sheets are ready (${load.early} frames waited, ${load.earlyDrawn} drew)`);
+check(load.first?.instances === 52 && load.revealed === 52, `then all fifty-two at once (${load.first?.instances})`);
+for (const stage of load.stages) {
+  check(stage.total > 0 && stage.done === stage.total && stage.failed === 0,
+    `${stage.label}: ${stage.done}/${stage.total}${stage.finishedAt !== undefined ? ` at ${Math.round(stage.finishedAt)} ms` : ''}`);
+}
+const swap = JSON.parse(await evaluate(`(async () => {
+  const from = __felt.frames().length;
+  document.getElementById('restyle').click();
+  const sheet = __felt.cards()[0].sheet;
+  const t = performance.now();
+  while (!(sheet.ready() && __felt.cards().every(c => c.revealed)) && performance.now() - t < 30000) {
+    await new Promise(r => setTimeout(r, 50));
+  }
+  await new Promise(r => setTimeout(r, 200));
+  const during = __felt.frames().slice(from);
+  return JSON.stringify({ ms: performance.now() - t, frames: during.length,
+    fewest: Math.min(...during.map(f => f.instances)), ready: sheet.ready() });
+})()`));
+check(swap.ready && swap.fewest === 52,
+  `changing deck keeps every card on show till the new one is finished (${swap.frames} frames, never fewer than ${swap.fewest})`);
+
 // --- one stack: canned animations tapped fast ------------------------------
 console.log('\none stack');
 await open('one-stack.html', '__felt?.pile?.().length >= 5');
@@ -343,7 +379,10 @@ const turning = JSON.parse(await evaluate(`(async () => {
   };
   b.on('update', watch);
   for (let i = 0; i < 10; i++) { __felt.throwOne(); await new Promise(r => setTimeout(r, 260)); }
-  await new Promise(r => setTimeout(r, 1500));
+  // Till everything has landed and turned over, not a fixed time: under
+  // software GL a slow frame can leave the last flip still in the air.
+  await new Promise(r => setTimeout(r, 500));
+  for (let t = 0; t < 80 && b.tweens.count; t++) await new Promise(r => setTimeout(r, 100));
   b.off('update', watch);
   return JSON.stringify({ worst, held: __felt.held().length, opposite: __felt.opposite().length,
     mineUp: __felt.held().every(c => c.card.faceUp), theirsDown: __felt.opposite().every(c => !c.card.faceUp) });

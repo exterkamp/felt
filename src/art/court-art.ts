@@ -91,6 +91,8 @@ export async function renderCourt(
   const pending = flying.get(key);
   if (pending) return pending;
   const job = renderCourtOnce(board, key, rank, suit, palette, width, cut);
+  // Known to be coming, so a face painted without it is not finished yet.
+  art.expect(key, job);
   flying.set(key, job);
   return job.finally(() => flying.delete(key));
 }

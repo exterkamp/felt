@@ -107,6 +107,21 @@ The names were kept wherever the idea survived, so a port is mostly deleting
 | `cardSnapshot`, `cardPlane`, `bendPlane` | gone: every card bends |
 | - | `flipCard(board, sprite)`: lift, roll half a turn, land the other side up |
 | - | `board.pick(x, y)`, `board.snapshot()`, `board.keepAwake()` |
+| - | `animatorOf(board).play(target, { channel, policy, intent, debounce, ... })` |
+
+## Canned animations
+
+Flips, throws, landing pops and re-fans go through the board's `Animator`.
+What an animation adds to a card while it runs (lift, roll, arc, pop) is an
+offset on its resting pose, so nothing a tap interrupts is ever left behind.
+Each runs on a channel of the card with a policy for being asked again -
+`queue`, `latest`, `interrupt`, `finish`, `ignore` - and asks are
+**deduplicated** by `intent` (what the animation leaves the card as) and
+**debounced**. A flip is a wish for the other side from where the card is
+*going*: a burst of taps is one flip, a tap during a flip waits as at most one
+more, and a third tap calls that off. Throwing a card again to where it is
+already flying, or re-fanning a hand to the places its cards are already
+going, carries on rather than starting over.
 
 ## Card sheets: the engine owns the pictures
 
@@ -139,6 +154,20 @@ What the engine does with them:
   frame, so changing a card's rank shows the new face with nobody telling it;
   `sprite.restyle(style)` moves it to another deck's sheets.
 
+- **No card is drawn half-finished.** On a board that waits for art (the
+  default, `createBoard({ waitForArt })`) a card is not drawn until both its
+  sheets are finished: the whole standard deck painted, with nothing it asked
+  for - the index fonts, a suit glyph, the back, a court portrait - still on
+  its way. Art that fails to load is given up on rather than waited for. A
+  sheet cards are waiting on is warmed at once and harder (10 ms a frame). A
+  card restyled to a look not yet finished goes on showing the old one until
+  the new one is, so switching deck never blinks the table.
+
+`loadingReport(board)` says how far the engine has got, stage by stage -
+WebGL2, fonts, suit glyphs, backs, court portraits, sheet cells - with when
+each finished and what is still awaited; `await cardsReady(board)` is the
+first frame the cards are drawn. The **Loading** demo draws it as bars.
+
 Painting itself stays off the GPU's critical path. Each picture is rastered
 into a small CPU canvas from CPU-backed sources and shared mip chains; rank
 text is rastered once per size and ink. It is uploaded as premultiplied
@@ -151,7 +180,7 @@ npm install
 npm run demo        # http://localhost:4390, and the LAN address
 ```
 
-The same nine pages as phaser-card-engine's - stacks, card sizes, throwing,
+Two basics - one stack, and the engine loading - then the same nine pages as phaser-card-engine's - stacks, card sizes, throwing,
 hold'em, hands, the deck editor, the riffle, the tuck box, card faces - ported
 to felt. Some do more than before: thrown cards arc off the felt, cards dealt
 face up flip over in the air, and the riffled packets are the cards
@@ -160,7 +189,7 @@ themselves.
 ## Testing
 
 ```bash
-npm test            # typecheck (library, specs, demos) + 291 vitest specs in node
+npm test            # typecheck (library, specs, demos) + 299 vitest specs in node
 npm run smoke -- --host=http://localhost:4390   # real Chrome, real WebGL2 (SwiftShader)
 ```
 
