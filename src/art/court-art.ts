@@ -84,6 +84,24 @@ export async function renderCourt(
   const key = courtTextureKey(palette, rank, suit, width, cut);
   const art = CardArt.of(board);
   if (art.has(key)) return key;
+  // One render per portrait however many ask: a deck's sheet asks for each
+  // court as it paints it, and renderCourts may be asking for the same ones.
+  let flying = inFlight.get(board);
+  if (!flying) inFlight.set(board, (flying = new Map()));
+  const pending = flying.get(key);
+  if (pending) return pending;
+  const job = renderCourtOnce(board, key, rank, suit, palette, width, cut);
+  flying.set(key, job);
+  return job.finally(() => flying.delete(key));
+}
+
+const inFlight = new WeakMap<Board, Map<string, Promise<string>>>();
+
+async function renderCourtOnce(
+  board: Board, key: string, rank: CourtRank, suit: string,
+  palette: CourtPalette, width: number, cut: CourtCut,
+): Promise<string> {
+  const art = CardArt.of(board);
 
   // With a worker doing the heavy part, what is left on the main thread is
   // the decode and the resize, and twelve decks' worth of those started at

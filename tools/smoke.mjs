@@ -101,7 +101,7 @@ console.log(`smoking ${host}`);
 await send('Page.navigate', { url: `${host}/` });
 await sleep(700);
 const tiles = JSON.parse(await evaluate(`JSON.stringify([...document.querySelectorAll('a.demo')].map(a => a.href))`));
-check(tiles.length === 9, `the home screen lists nine demos (${tiles.length})`);
+check(tiles.length === 10, `the home screen lists ten demos (${tiles.length})`);
 let reachable = 0;
 let wayBack = 0;
 let boards = 0;

@@ -9,7 +9,7 @@ import {
 import {
   ArtLookup, CardArt, FONT_ASSET, STANDARD_SUIT_ART, backAssetKey, ensureArt,
 } from './card-art.js';
-import { courtTextureKey } from './court-art.js';
+import { courtTextureKey, renderCourt } from './court-art.js';
 
 // The engine's card sheets: every card picture on the table, owned in one
 // place.
@@ -137,6 +137,14 @@ export class FaceSheet {
     const courtKey = isCourtRank(rank)
       ? courtTextureKey(this.palette, rank, suit, this.courtWidth, this.metrics.court.cut) : '';
     const art = CardArt.of(this.board);
+    // The portrait is the sheet's to get, not the game's: a court asked for
+    // starts its own render, the cell shows the pip until it lands, and the
+    // landing repaints it. renderCourts is still there to start a whole deck
+    // early; it and this share the work, never doing it twice.
+    if (courtKey && !art.has(courtKey) && isCourtRank(rank)) {
+      void renderCourt(this.board, rank, suit, this.palette, this.courtWidth, this.metrics.court.cut)
+        .catch(() => undefined);
+    }
     art.paintTracked(region, (lookup) => this.painter(lookup, art, suit, rank, ink, courtKey));
     return region;
   }
