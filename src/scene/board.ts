@@ -1,0 +1,545 @@
+import { Atlas } from '../gl/atlas.js';
+import { lensDistance } from '../gl/lens.js';
+import { DrawItem, MeshItem, Renderer } from '../gl/renderer.js';
+import { Node } from './node.js';
+import { Sprite, SpriteOptions } from './sprite.js';
+import { Tweens } from './tweens.js';
+
+// The board: one canvas, one camera, one list of things on it.
+//
+// What Phaser's Game, Scene, root Container and Scale manager did between
+// them, and only what a card table needs of them.
+//
+// **Sharp by construction.** The canvas is `size x pixelRatio` and every
+// picture is rasterised at that ratio, so every coordinate a game writes is
+// in logical units and only the density goes up - which phaser-card-engine
+// needed `createBoard` and `boardRoot` and a scaled container to get, and
+// then lost depth sorting to the container.
+//
+// **Asleep when nothing moves.** A frame is drawn when something changed - a
+// card moved, a tween is running, a picture landed in the atlas - and not
+// otherwise. A turn-based game sitting on a decision costs no GPU time at
+// all, which on a phone is the difference that matters.
+
+export interface BoardOptions {
+  parent: string | HTMLElement;
+  /** The board's size in logical units - the numbers your game thinks in. */
+  width: number;
+  height: number;
+  /** The felt. A CSS color or 0xrrggbb. */
+  backgroundColor?: string | number;
+  /** Let the page show through where nothing is drawn. */
+  transparent?: boolean;
+  /** Defaults to the device's own ratio, which is what you want. */
+  pixelRatio?: number;
+  /**
+   * The lens, in degrees of vertical view. 0 is a flat orthographic board,
+   * where nothing lifted or tipped gets any perspective. Default 45.
+   */
+  fov?: number;
+  /**
+   * Where perspective is seen from: over each card (`'local'`, the default,
+   * so a card tipped in a corner looks like one tipped in the middle) or over
+   * the middle of the board (`'board'`, the true picture).
+   */
+  lens?: 'local' | 'board';
+}
+
+export interface BoardPointer {
+  /** In board units. */
+  x: number;
+  y: number;
+  /** Where this press started. */
+  downX: number;
+  downY: number;
+  id: number;
+  /** The topmost interactive node under the press, if any. */
+  node?: Node;
+  /** How far it has moved since it went down. */
+  distance: number;
+  event: PointerEvent;
+}
+
+type Handler = (...args: any[]) => void;
+
+/** A mesh with a place in the draw order. */
+export interface BoardMesh extends MeshItem {
+  depth: number;
+  visible: boolean;
+  readonly serial: number;
+}
+
+let meshSerial = 1e9;
+export const nextMeshSerial = () => meshSerial++;
+
+function cssToRgba(color: string | number | undefined): [number, number, number, number] {
+  if (color === undefined) return [0, 0, 0, 1];
+  if (typeof color === 'number') {
+    return [((color >> 16) & 255) / 255, ((color >> 8) & 255) / 255, (color & 255) / 255, 1];
+  }
+  const probe = document.createElement('canvas').getContext('2d')!;
+  probe.fillStyle = color;
+  const css = probe.fillStyle;
+  if (css.startsWith('#')) {
+    const n = Number.parseInt(css.slice(1, 7), 16);
+    return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255, 1];
+  }
+  const parts = css.match(/[\d.]+/g)?.map(Number) ?? [0, 0, 0, 1];
+  return [parts[0] / 255, parts[1] / 255, parts[2] / 255, parts[3] ?? 1];
+}
+
+export class Board {
+  readonly canvas: HTMLCanvasElement;
+  readonly parent: HTMLElement;
+  readonly width: number;
+  readonly height: number;
+  readonly pixelRatio: number;
+  readonly atlas: Atlas;
+  readonly renderer: Renderer;
+  readonly tweens = new Tweens();
+  /** Camera to table, in units. Infinity on a flat board. */
+  distance: number;
+  localLens: boolean;
+  readonly vanishX: number;
+  readonly vanishY: number;
+  /** Anything the art layer wants to hang off the board. */
+  readonly services = new Map<string, unknown>();
+
+  private readonly items: (Node | BoardMesh)[] = [];
+  private sorted = true;
+  private dirty = true;
+  private frameRequest = 0;
+  private last = 0;
+  private time = 0;
+  private awake = 0;
+  private destroyedFlag = false;
+  private readonly handlers = new Map<string, Set<Handler>>();
+  private readonly pointers = new Map<number, BoardPointer & { dragging?: Node }>();
+  private readonly background: [number, number, number, number];
+  private readonly resizeObserver?: ResizeObserver;
+  private readonly cleanup: (() => void)[] = [];
+  /** Frames drawn so far. */
+  frames = 0;
+
+  constructor(options: BoardOptions) {
+    const parent = typeof options.parent === 'string'
+      ? document.getElementById(options.parent) ?? document.querySelector(options.parent)
+      : options.parent;
+    if (!parent) throw new Error(`felt: no element ${String(options.parent)}`);
+    this.parent = parent as HTMLElement;
+    this.width = options.width;
+    this.height = options.height;
+    this.pixelRatio = options.pixelRatio ?? window.devicePixelRatio ?? 1;
+    this.distance = lensDistance(options.fov ?? 45, options.height);
+    this.localLens = (options.lens ?? 'local') === 'local';
+    this.vanishX = options.width / 2;
+    this.vanishY = options.height / 2;
+    this.background = options.transparent ? [0, 0, 0, 0] : cssToRgba(options.backgroundColor);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(options.width * this.pixelRatio);
+    canvas.height = Math.round(options.height * this.pixelRatio);
+    // The canvas handles its own gestures; without this a drag on a phone is
+    // also a page scroll and the card sits still while the page slides.
+    canvas.style.touchAction = 'none';
+    canvas.style.display = 'block';
+    canvas.style.margin = '0 auto';
+    canvas.style.userSelect = 'none';
+    this.canvas = canvas;
+    this.parent.appendChild(canvas);
+
+    this.atlas = new Atlas(2048);
+    this.atlas.onChange = () => this.touch();
+    this.renderer = new Renderer(canvas, this.atlas, { transparent: options.transparent });
+    this.tweens.onWake = () => this.wake();
+
+    this.fit();
+    if (typeof ResizeObserver !== 'undefined') {
+      this.resizeObserver = new ResizeObserver(() => this.fit());
+      this.resizeObserver.observe(this.parent);
+    }
+    this.listen();
+    this.wake();
+  }
+
+  // --- fitting -------------------------------------------------------------
+
+  /**
+   * Fits the canvas inside its parent, keeping its proportions.
+   *
+   * The backing store does not change - it is the board at its pixel ratio -
+   * only the size it is shown at, the way Phaser's Scale.FIT did it.
+   */
+  fit(): void {
+    const box = this.parent.getBoundingClientRect();
+    const style = getComputedStyle(this.parent);
+    const pad = (a: string, b: string) => Number.parseFloat(a) + Number.parseFloat(b);
+    const availW = box.width - pad(style.paddingLeft, style.paddingRight);
+    let availH = box.height - pad(style.paddingTop, style.paddingBottom);
+    if (!(availH > 0)) availH = Infinity;
+    const scale = Math.min(availW / this.width, availH / this.height);
+    if (!(scale > 0) || !Number.isFinite(scale)) return;
+    this.canvas.style.width = `${Math.floor(this.width * scale)}px`;
+    this.canvas.style.height = `${Math.floor(this.height * scale)}px`;
+  }
+
+  // --- the list ------------------------------------------------------------
+
+  /** Called by a node's setters. Schedules a frame. */
+  touch(): void {
+    this.dirty = true;
+    this.wake();
+  }
+
+  /** Called when a depth changes. */
+  resort(): void {
+    this.sorted = false;
+    this.touch();
+  }
+
+  attach(node: Node): void {
+    this.items.push(node);
+    this.resort();
+  }
+
+  detach(item: Node | BoardMesh): void {
+    const at = this.items.indexOf(item);
+    if (at >= 0) this.items.splice(at, 1);
+    this.tweens.killTweensOf(item);
+    this.touch();
+  }
+
+  /** Puts a mesh in the draw order. */
+  addMesh(mesh: BoardMesh): void {
+    this.items.push(mesh);
+    this.resort();
+  }
+
+  /** Everything on the board, back to front. */
+  get children(): readonly (Node | BoardMesh)[] {
+    this.sort();
+    return this.items;
+  }
+
+  /** Every node of a kind, back to front. */
+  nodes<T extends Node>(kind?: abstract new (...args: any[]) => T): T[] {
+    this.sort();
+    return this.items.filter((item): item is T =>
+      item instanceof Node && (!kind || item instanceof kind));
+  }
+
+  private sort(): void {
+    if (this.sorted) return;
+    this.items.sort((a, b) => a.depth - b.depth || a.serial - b.serial);
+    this.sorted = true;
+  }
+
+  // --- pictures ------------------------------------------------------------
+
+  /** A sprite showing an atlas region. */
+  image(region: Parameters<Atlas['release']>[0], options: SpriteOptions = {}): Sprite {
+    return new Sprite(this, region, options);
+  }
+
+  /**
+   * A sprite of something drawn with Canvas 2D, at this board's density.
+   *
+   * `paint` draws in board units, with the origin at the top-left of a box
+   * `width` by `height`. Pass a `key` to share one picture between sprites.
+   */
+  graphic(width: number, height: number,
+    paint: (pen: CanvasRenderingContext2D, width: number, height: number) => void,
+    options: SpriteOptions & { key?: string } = {}): Sprite {
+    const key = options.key ?? `graphic-${graphicSerial++}`;
+    const ratio = this.pixelRatio;
+    const region = this.atlas.obtain(`${key}@${ratio}`, width * ratio, height * ratio, (pen) => {
+      pen.scale(ratio, ratio);
+      paint(pen as CanvasRenderingContext2D, width, height);
+    });
+    return new Sprite(this, region, { width, height, ...options }, true);
+  }
+
+  /** A line of text as a sprite, measured and rasterised at this density. */
+  text(text: string, style: TextStyle = {}, options: SpriteOptions = {}): Sprite {
+    const size = style.size ?? 12;
+    const font = `${style.weight ?? 'normal'} ${size}px ${style.font ?? 'sans-serif'}`;
+    const measure = measurer();
+    measure.font = font;
+    const metrics = measure.measureText(text);
+    const pad = Math.ceil(size * 0.25);
+    const width = Math.ceil(metrics.width) + pad * 2;
+    const height = Math.ceil(size * 1.3) + pad;
+    const color = style.color ?? '#ffffff';
+    return this.graphic(width, height, (pen, w, h) => {
+      pen.font = font;
+      pen.fillStyle = color;
+      pen.textBaseline = 'middle';
+      pen.textAlign = 'center';
+      pen.fillText(text, w / 2, h / 2);
+    }, { key: `text-${font}-${color}-${text}`, ...options });
+  }
+
+  // --- input ---------------------------------------------------------------
+
+  /** A point on the page, in board units. */
+  toBoard(clientX: number, clientY: number): { x: number; y: number } {
+    const rect = this.canvas.getBoundingClientRect();
+    return {
+      x: ((clientX - rect.left) / rect.width) * this.width,
+      y: ((clientY - rect.top) / rect.height) * this.height,
+    };
+  }
+
+  /** The topmost interactive node under a point, if any. */
+  pick(x: number, y: number, accept?: (node: Node) => boolean): Node | undefined {
+    this.sort();
+    for (let i = this.items.length - 1; i >= 0; i--) {
+      const item = this.items[i];
+      if (!(item instanceof Node)) continue;
+      if (!(item.interactive || item.draggable)) continue;
+      if (accept && !accept(item)) continue;
+      if (item.hitTest(x, y)) return item;
+    }
+    return undefined;
+  }
+
+  /** Every node under a point, front first, interactive or not. */
+  nodesAt(x: number, y: number): Node[] {
+    this.sort();
+    const out: Node[] = [];
+    for (let i = this.items.length - 1; i >= 0; i--) {
+      const item = this.items[i];
+      if (item instanceof Node && item.hitTest(x, y)) out.push(item);
+    }
+    return out;
+  }
+
+  private listen(): void {
+    const canvas = this.canvas;
+    const down = (event: PointerEvent) => {
+      const at = this.toBoard(event.clientX, event.clientY);
+      const node = this.pick(at.x, at.y);
+      const pointer = {
+        x: at.x, y: at.y, downX: at.x, downY: at.y, id: event.pointerId,
+        node, distance: 0, event, dragging: undefined as Node | undefined,
+      };
+      this.pointers.set(event.pointerId, pointer);
+      try { canvas.setPointerCapture(event.pointerId); } catch { /* synthetic */ }
+      event.preventDefault();
+      this.emit('pointerdown', pointer);
+      if (node?.draggable) {
+        pointer.dragging = node;
+        this.emit('dragstart', pointer, node);
+      }
+    };
+    const move = (event: PointerEvent) => {
+      const at = this.toBoard(event.clientX, event.clientY);
+      const pointer = this.pointers.get(event.pointerId);
+      if (!pointer) {
+        this.emit('pointermove', { x: at.x, y: at.y, downX: at.x, downY: at.y,
+          id: event.pointerId, distance: 0, event });
+        return;
+      }
+      pointer.x = at.x;
+      pointer.y = at.y;
+      pointer.event = event;
+      pointer.distance = Math.hypot(at.x - pointer.downX, at.y - pointer.downY);
+      this.emit('pointermove', pointer);
+      if (pointer.dragging) this.emit('drag', pointer, pointer.dragging);
+    };
+    const up = (event: PointerEvent) => {
+      const pointer = this.pointers.get(event.pointerId);
+      if (!pointer) return;
+      const at = this.toBoard(event.clientX, event.clientY);
+      pointer.x = at.x;
+      pointer.y = at.y;
+      pointer.event = event;
+      this.pointers.delete(event.pointerId);
+      if (pointer.dragging) this.emit('dragend', pointer, pointer.dragging);
+      this.emit('pointerup', pointer);
+      // A tap: down and up without wandering. What a button is, on a table.
+      if (pointer.distance < 8 && event.type === 'pointerup') this.emit('tap', pointer);
+    };
+    canvas.addEventListener('pointerdown', down);
+    canvas.addEventListener('pointermove', move);
+    canvas.addEventListener('pointerup', up);
+    canvas.addEventListener('pointercancel', up);
+    const lost = (event: Event) => {
+      if (this.destroyedFlag) return;
+      event.preventDefault();
+    };
+    canvas.addEventListener('webglcontextlost', lost);
+    this.cleanup.push(() => {
+      canvas.removeEventListener('pointerdown', down);
+      canvas.removeEventListener('pointermove', move);
+      canvas.removeEventListener('pointerup', up);
+      canvas.removeEventListener('pointercancel', up);
+      canvas.removeEventListener('webglcontextlost', lost);
+    });
+  }
+
+  // --- events --------------------------------------------------------------
+
+  on(event: 'update', handler: (time: number, delta: number) => void): this;
+  on(event: 'pointerdown' | 'pointermove' | 'pointerup' | 'tap', handler: (pointer: BoardPointer) => void): this;
+  on(event: 'dragstart' | 'drag' | 'dragend', handler: (pointer: BoardPointer, node: Node) => void): this;
+  on(event: string, handler: Handler): this;
+  on(event: string, handler: Handler): this {
+    let set = this.handlers.get(event);
+    if (!set) this.handlers.set(event, (set = new Set()));
+    set.add(handler);
+    if (event === 'update') this.wake();
+    return this;
+  }
+
+  off(event: string, handler: Handler): this {
+    this.handlers.get(event)?.delete(handler);
+    return this;
+  }
+
+  once(event: string, handler: Handler): this {
+    const wrapped: Handler = (...args) => {
+      this.off(event, wrapped);
+      handler(...args);
+    };
+    return this.on(event, wrapped);
+  }
+
+  emit(event: string, ...args: unknown[]): void {
+    const set = this.handlers.get(event);
+    if (!set) return;
+    for (const handler of [...set]) handler(...args);
+  }
+
+  // --- the loop ------------------------------------------------------------
+
+  /**
+   * Keeps the board drawing every frame until the returned function is
+   * called. For anything animating outside the tweens.
+   */
+  keepAwake(): () => void {
+    this.awake++;
+    this.wake();
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.awake--;
+    };
+  }
+
+  /** Milliseconds since the board started, as the loop sees it. */
+  get now(): number {
+    return this.time;
+  }
+
+  get isDestroyed(): boolean {
+    return this.destroyedFlag;
+  }
+
+  private wake(): void {
+    if (this.frameRequest || this.destroyedFlag) return;
+    this.frameRequest = requestAnimationFrame((t) => this.tick(t));
+  }
+
+  private tick(now: number): void {
+    this.frameRequest = 0;
+    if (this.destroyedFlag) return;
+    const delta = this.last ? Math.min(100, now - this.last) : 16;
+    this.last = now;
+    this.time += delta;
+
+    const updating = (this.handlers.get('update')?.size ?? 0) > 0;
+    if (updating) this.emit('update', this.time, delta);
+    const tweening = this.tweens.update(delta);
+
+    if (this.dirty) {
+      this.dirty = false;
+      this.render();
+    }
+    if (updating || tweening || this.awake > 0 || this.dirty) {
+      this.wake();
+    } else {
+      // Asleep. The next touch() wakes it, and the first frame after a
+      // sleep should not see the whole nap as one enormous delta.
+      this.last = 0;
+    }
+  }
+
+  /** Draws now, whatever the loop thinks. */
+  render(): void {
+    this.sort();
+    // A card buried under an identical one casts no shadow; see Node.covered.
+    let above: Node | undefined;
+    for (let i = this.items.length - 1; i >= 0; i--) {
+      const item = this.items[i];
+      if (!(item instanceof Node)) { above = undefined; continue; }
+      if (!item.visible) continue;
+      item.covered = above !== undefined && item.sameFootprint(above);
+      above = item;
+    }
+    this.renderer.frame(this.items as DrawItem[], {
+      width: this.width,
+      height: this.height,
+      distance: this.distance,
+      vanishX: this.vanishX,
+      vanishY: this.vanishY,
+      local: this.localLens,
+    }, this.background);
+    this.frames++;
+    this.emit('render');
+  }
+
+  /**
+   * The board as a PNG data URL, drawn fresh. The drawing buffer is not kept
+   * between frames, so this renders and reads in the same breath.
+   */
+  snapshot(type = 'image/png'): string {
+    return this.snapshotCanvas().toDataURL(type);
+  }
+
+  /**
+   * The board copied into a 2D canvas, drawn fresh. Much cheaper than
+   * `snapshot` when taken often - the copy stays on the GPU side of things
+   * and the PNG encode, which is the slow part, happens only if asked for.
+   */
+  snapshotCanvas(into?: HTMLCanvasElement): HTMLCanvasElement {
+    this.render();
+    const out = into ?? document.createElement('canvas');
+    out.width = this.canvas.width;
+    out.height = this.canvas.height;
+    out.getContext('2d')!.drawImage(this.canvas, 0, 0);
+    return out;
+  }
+
+  destroy(): void {
+    if (this.destroyedFlag) return;
+    this.destroyedFlag = true;
+    if (this.frameRequest) cancelAnimationFrame(this.frameRequest);
+    this.resizeObserver?.disconnect();
+    for (const fn of this.cleanup) fn();
+    this.emit('destroy');
+    this.handlers.clear();
+    this.renderer.destroy();
+    this.canvas.remove();
+  }
+}
+
+export interface TextStyle {
+  font?: string;
+  size?: number;
+  color?: string;
+  weight?: string;
+}
+
+let graphicSerial = 0;
+let probe: CanvasRenderingContext2D | undefined;
+function measurer(): CanvasRenderingContext2D {
+  probe ??= document.createElement('canvas').getContext('2d')!;
+  return probe;
+}
+
+/** Makes a board. The name phaser-card-engine used. */
+export function createBoard(options: BoardOptions): Board {
+  return new Board(options);
+}

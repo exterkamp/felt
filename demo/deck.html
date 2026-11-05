@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>felt — deck editor</title>
+    <style>
+      @font-face { font-family: 'Cinzel'; src: url('./fonts/cinzel-latin.woff2') format('woff2'); font-weight: 400 900; font-display: block; }
+      @font-face { font-family: 'Jost'; src: url('./fonts/jost-latin.woff2') format('woff2'); font-weight: 300 700; font-display: block; }
+      @font-face { font-family: 'Archivo'; src: url('./fonts/archivo-latin.woff2') format('woff2'); font-weight: 500 700; font-display: block; }
+      html, body { margin: 0; height: 100%; background: #0b2119; color: #cfead0; font-family: 'Jost', system-ui, sans-serif; }
+      body { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; padding: 0.8rem; box-sizing: border-box; }
+      h1 { font-family: 'Cinzel', Georgia, serif; font-size: 1.1rem; letter-spacing: 0.06em; margin: 0; color: #fdfdfd; text-transform: uppercase; }
+      p { margin: 0; font-size: 0.8rem; text-align: center; max-width: 32rem; color: #9fc4a4; }
+      a { color: #ffd166; font-size: 0.8rem; }
+      #board { width: min(480px, 100%); flex: 1; touch-action: none; }
+      .row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; justify-content: center; }
+      button {
+        font-family: 'Cinzel', Georgia, serif; font-size: 0.72rem; letter-spacing: 0.05em;
+        text-transform: uppercase; color: #fdfdfd; background: #17594a;
+        border: 1px solid #cfead0; border-radius: 4px; padding: 0.35rem 0.7rem; cursor: pointer;
+      }
+      .home {
+        position: fixed; top: 0.55rem; left: 0.6rem; z-index: 20;
+        font-family: 'Cinzel', Georgia, serif; font-size: 0.66rem;
+        letter-spacing: 0.05em; text-transform: uppercase; text-decoration: none;
+        color: #fdfdfd; background: #17594a; border: 1px solid #cfead0;
+        border-radius: 4px; padding: 0.28rem 0.5rem; line-height: 1;
+      }
+      .home:hover, .home:focus-visible { border-color: #ffd166; color: #ffd166; }
+      #board.deuter { filter: url(#deuteranopia); }
+      /* The shared page style gives the board flex: 1, which suits a page
+         that is mostly board. This one is mostly controls, so the board takes
+         its own shape instead of being stretched into a letterbox. */
+      #board { flex: none; aspect-ratio: 480 / 322; }
+      label { font-size: 0.7rem; display: flex; align-items: center; gap: 0.3rem; color: #9fc4a4; }
+      input[type=color] { width: 2rem; height: 1.5rem; padding: 0; border: 1px solid #cfead0; border-radius: 3px; background: none; cursor: pointer; }
+      select { font-family: 'Jost', sans-serif; font-size: 0.7rem; padding: 0.25rem; border-radius: 4px; border: 1px solid #cfead0; background: #17594a; color: #fdfdfd; }
+      fieldset {
+        border: 1px solid #1f5e4d; border-radius: 6px; margin: 0; padding: 0.5rem 0.7rem 0.6rem;
+        display: flex; flex-wrap: wrap; gap: 0.5rem 0.9rem; justify-content: center;
+        width: min(30rem, 100%); box-sizing: border-box;
+      }
+      legend {
+        font-family: 'Cinzel', Georgia, serif; font-size: 0.62rem; letter-spacing: 0.08em;
+        text-transform: uppercase; color: #cfead0; padding: 0 0.35rem;
+      }
+      #style {
+        font-family: ui-monospace, monospace; font-size: 0.62rem; line-height: 1.45;
+        color: #9fc4a4; background: #0e2f26; border: 1px solid #1f5e4d; border-radius: 6px;
+        padding: 0.6rem 0.8rem; margin: 0; width: min(30rem, 100%); box-sizing: border-box;
+        overflow-x: auto; text-align: left;
+      }
+      .rank { display: flex; align-items: center; gap: 0.6rem; }
+      #presets { gap: 0.4rem; }
+      #presets button { font-size: 0.68rem; padding: 0.3rem 0.6rem; }
+      #presets button.on, button.on { background: #ffd166; color: #13463a; border-color: #ffd166; }
+      button.on { background: #ffd166; color: #13463a; border-color: #ffd166; }
+    </style>
+  </head>
+  <body>
+    <a class="home" href="./">&larr; Demos</a>
+    <h1>Deck editor</h1>
+    <p>
+      Every color this package lets a game set, over a deck you can walk
+      through a rank at a time. Four separate systems &mdash; the stock, the
+      suit inks, the back, the court palette &mdash; and the point of putting
+      them in one place is that they stay separate. <strong>Start from one of
+      the six decks below</strong>: each is nothing but the eleven values on
+      this page, and the code for whichever you are looking at is printed at
+      the bottom.
+    </p>
+    <div id="board"></div>
+    <p id="note"></p>
+    <div class="row rank">
+      <button id="prev">&larr; Rank</button>
+      <button id="next">Rank &rarr;</button>
+    </div>
+
+    <fieldset id="presets-box">
+      <legend>Whole decks</legend>
+      <div id="presets" class="row"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>The card</legend>
+      <label>stock <input type="color" id="paper" /><code id="paper-hex"></code></label>
+      <label>red suits <input type="color" id="redink" /><code id="redink-hex"></code></label>
+      <label>black suits <input type="color" id="blackink" /><code id="blackink-hex"></code></label>
+    </fieldset>
+
+    <fieldset>
+      <legend>The back</legend>
+      <label>deck color <input type="color" id="backcolor" /><code id="backcolor-hex"></code></label>
+      <label>design <select id="backdesign"></select></label>
+    </fieldset>
+
+    <fieldset>
+      <legend>The court</legend>
+      <label>preset <select id="courtpreset"><option value="">custom</option></select></label>
+      <label>ink <input type="color" id="court-ink" /></label>
+      <label>field <input type="color" id="court-gold" /></label>
+      <label>garment <input type="color" id="court-red" /></label>
+      <label>skin &amp; linen <input type="color" id="court-highlight" /></label>
+    </fieldset>
+
+    <div class="row">
+      <button id="surprise">Surprise me</button>
+      <button id="reset">Reset</button>
+      <button id="deuter">Deuteranopia</button>
+    </div>
+
+    <pre id="style"></pre>
+
+    <p style="font-size:0.7rem;opacity:0.7">
+      The suit inks are not rules: print the hearts in green and they go on
+      counting as <code>red</code> to everything that asks. The court is a
+      palette of its own and the suit inks never touch it. <strong>Skin &amp;
+      linen</strong> is the white <em>inside</em> the drawing, kept apart from
+      the stock: the source paints both in the same white, so a dark card with
+      one role for the two would be a King with no face. Black stays put in
+      the court &mdash; it is the mass the line work sits on rather than a
+      color anything is printed in.
+    </p>
+
+    <!-- A deuteranope's view, by the Vi&eacute;not matrix &mdash; worth a
+         glance at any deck where two seats have to be told apart. -->
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+      <filter id="deuteranopia" color-interpolation-filters="linearRGB">
+        <feColorMatrix type="matrix" values="
+          0.625 0.375 0     0 0
+          0.700 0.300 0     0 0
+          0     0.300 0.700 0 0
+          0     0     0     1 0" />
+      </filter>
+    </svg>
+    <script type="module" src="./deck.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>felt — riffle</title>
+    <style>
+      @font-face { font-family: 'Cinzel'; src: url('./fonts/cinzel-latin.woff2') format('woff2'); font-weight: 400 900; font-display: block; }
+      @font-face { font-family: 'Jost'; src: url('./fonts/jost-latin.woff2') format('woff2'); font-weight: 300 700; font-display: block; }
+      @font-face { font-family: 'Archivo'; src: url('./fonts/archivo-latin.woff2') format('woff2'); font-weight: 500 700; font-display: block; }
+      html, body { margin: 0; height: 100%; background: #0b2119; color: #cfead0; font-family: 'Jost', system-ui, sans-serif; }
+      body { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; padding: 0.8rem; box-sizing: border-box; }
+      h1 { font-family: 'Cinzel', Georgia, serif; font-size: 1.1rem; letter-spacing: 0.06em; margin: 0; color: #fdfdfd; text-transform: uppercase; }
+      p { margin: 0; font-size: 0.8rem; text-align: center; max-width: 32rem; color: #9fc4a4; }
+      a { color: #ffd166; font-size: 0.8rem; }
+      #board { width: min(480px, 100%); flex: 1; touch-action: none; }
+      .row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; justify-content: center; }
+      button {
+        font-family: 'Cinzel', Georgia, serif; font-size: 0.72rem; letter-spacing: 0.05em;
+        text-transform: uppercase; color: #fdfdfd; background: #17594a;
+        border: 1px solid #cfead0; border-radius: 4px; padding: 0.35rem 0.7rem; cursor: pointer;
+      }
+      .home {
+        position: fixed; top: 0.55rem; left: 0.6rem; z-index: 20;
+        font-family: 'Cinzel', Georgia, serif; font-size: 0.66rem;
+        letter-spacing: 0.05em; text-transform: uppercase; text-decoration: none;
+        color: #fdfdfd; background: #17594a; border: 1px solid #cfead0;
+        border-radius: 4px; padding: 0.28rem 0.5rem; line-height: 1;
+      }
+      .home:hover, .home:focus-visible { border-color: #ffd166; color: #ffd166; }
+    </style>
+  </head>
+  <body>
+    <a class="home" href="./">&larr; Demos</a>
+    <h1>Riffle</h1>
+    <p>
+      The pack cuts in two, both halves bow under the thumbs, and the cards
+      spring off one at a time. The cards <em>bend</em> while it happens: for
+      the length of the shuffle each one is a mesh rather than a sprite, so it
+      can be bowed and tipped rather than only moved.
+    </p>
+    <div id="board"></div>
+    <p id="note"></p>
+    <div class="row">
+      <button id="riffle">Riffle</button>
+      <button id="twice">Twice</button>
+      <button id="slow">Slowly</button>
+      <button id="reset">New deck</button>
+    </div>
+    <p style="font-size:0.7rem;opacity:0.7">
+      The order is decided before any of this runs. What you are watching is a
+      riffle worked backwards from the deck it has to produce, so the card on
+      top afterwards is the card the shuffle put there.
+    </p>
+    <script type="module" src="./shuffle.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,6 @@
+/dist
+/node_modules
+/demo-dist
+npm-debug.log
+*.tgz
+__pycache__/

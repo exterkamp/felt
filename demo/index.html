@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>felt — demos</title>
+    <style>
+      @font-face { font-family: 'Cinzel'; src: url('./fonts/cinzel-latin.woff2') format('woff2'); font-weight: 400 900; font-display: block; }
+      @font-face { font-family: 'Jost'; src: url('./fonts/jost-latin.woff2') format('woff2'); font-weight: 300 700; font-display: block; }
+      html, body { margin: 0; min-height: 100%; background: #0b2119; color: #cfead0; font-family: 'Jost', system-ui, sans-serif; }
+      body { display: flex; flex-direction: column; align-items: center; padding: 1.6rem 0.9rem 2.4rem; box-sizing: border-box; }
+      h1 { font-family: 'Cinzel', Georgia, serif; font-size: 1.35rem; letter-spacing: 0.06em; margin: 0 0 0.35rem; color: #fdfdfd; text-transform: uppercase; }
+      .lede { margin: 0 0 1.5rem; font-size: 0.85rem; text-align: center; max-width: 30rem; color: #9fc4a4; line-height: 1.5; }
+      .lede code { color: #cfead0; }
+      ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.7rem; width: min(30rem, 100%); }
+      a.demo {
+        display: block; text-decoration: none; color: inherit;
+        background: #13463a; border: 1px solid #1f5e4d; border-radius: 8px;
+        padding: 0.8rem 0.95rem; transition: border-color 0.12s, transform 0.12s;
+      }
+      a.demo:hover, a.demo:focus-visible { border-color: #ffd166; transform: translateY(-1px); }
+      a.demo h2 {
+        font-family: 'Cinzel', Georgia, serif; font-size: 0.86rem; letter-spacing: 0.05em;
+        text-transform: uppercase; margin: 0 0 0.2rem; color: #fdfdfd;
+      }
+      a.demo p { margin: 0; font-size: 0.78rem; color: #9fc4a4; line-height: 1.45; }
+      a.demo p code { color: #ffd166; }
+      footer { margin-top: 1.6rem; font-size: 0.72rem; color: #6f8f78; text-align: center; max-width: 28rem; line-height: 1.5; }
+      footer a { color: #ffd166; }
+    </style>
+  </head>
+  <body>
+    <h1>felt</h1>
+    <p class="lede">
+      A WebGL2 engine for card games and nothing else, demonstrated one
+      primitive at a time. Every page below is a felt board &mdash; no Phaser,
+      every card on it in one draw call.
+    </p>
+    <ul>
+      <li>
+        <a class="demo" href="./stacks.html">
+          <h2>Stacks</h2>
+          <p>One of every direction a pile can run, in both draw orders — and
+            a card you can drag from one to another. <code>Stack</code>.</p>
+        </a>
+      </li>
+      <li>
+        <a class="demo" href="./hands.html">
+          <h2>Hands</h2>
+          <p>Cards held rather than stacked: they pivot around the grip, so
+            the fan bulges up in the middle. <code>Hand</code>.</p>
+        </a>
+      </li>
+      <li>
+        <a class="demo" href="./throws.html">
+          <h2>Throwing</h2>
+          <p>Tap the felt to throw a card at that spot, or tap a pile to throw
+            one onto it. <code>throwCard</code>.</p>
+        </a>
+      </li>
+      <li>
+        <a class="demo" href="./holdem.html">
+          <h2>Dealing hold'em</h2>
+          <p>Four seats dealt automatically, the way a dealer deals it. Every
+            primitive at once, and no rules at all.</p>
+        </a>
+      </li>
+      <li>
+        <a class="demo" href="./shuffle.html">
+          <h2>Riffle</h2>
+          <p>The pack cuts, both halves bow under the thumbs, and the cards
+            spring off. They bend while it happens. <code>riffleShuffle</code>.</p>
+        </a>
+      </li>
+      <li>
+        <a class="demo" href="./box.html">
+          <h2>Tuck box</h2>
+          <p>The box a deck comes in, as an object: six panels of card, a
+            hinged lid and a tab. It turns, opens, and hands you the deck.</p>
+        </a>
+      </li>
+      <li>
+        <a class="demo" href="./faces.html">
+          <h2>Card faces</h2>
+          <p>The same four cards in three layouts: one big index for a phone,
+            the printed card with a true count of pips, and jumbo index.</p>
+        </a>
+      </li>
+      <li>
+        <a class="demo" href="./deck.html">
+          <h2>Deck editor</h2>
+          <p>Every color a deck has &mdash; stock, suit inks, back, court
+            palette &mdash; over a deck you can step through.</p>
+        </a>
+      </li>
+      <li>
+        <a class="demo" href="./sizes.html">
+          <h2>Card sizes</h2>
+          <p>The same card at seven widths, drawn at each size rather than
+            drawn once and scaled. <code>cardFaceMetrics</code>.</p>
+        </a>
+      </li>
+    </ul>
+    <footer>
+      A card game is tested with a thumb — <code>npm run demo</code> prints a
+      LAN address alongside the local one, and that is the one to open on a
+      phone.
+    </footer>
+  </body>
+</html>

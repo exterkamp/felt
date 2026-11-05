@@ -1,0 +1,160 @@
+# felt
+
+A WebGL2 engine for card games, and nothing else.
+
+Everything [phaser-card-engine](https://github.com/exterkamp/phaser-card-engine)
+does, without Phaser underneath it: the same cards, stacks, hands, faces,
+courts, decks, throws, deals, riffles and tuck box, drawn by a renderer that
+only ever has to draw cards. Every card on the table is one instance of one
+instanced draw call, a card can lift, tip, roll and bend because it is a real
+two-sided surface in a real (optional) perspective, and a board that nothing
+is moving on draws nothing at all.
+
+```ts
+import { createBoard, CardSprite, loadCardArt, renderCourts, shuffledDeck, throwCard,
+  COURT_PALETTES } from 'felt';
+
+const board = createBoard({ parent: 'board', width: 480, height: 640, backgroundColor: '#13463a' });
+void loadCardArt(board);                          // suits, backs, fonts - not required first
+void renderCourts(board, COURT_PALETTES.press);   // portraits land when they land
+
+const cards = shuffledDeck().map((card) => new CardSprite(board, { ...card, faceUp: true }));
+await throwCard(board, cards[0], { x: 240, y: 320 }, { arc: 28 });
+```
+
+## What it is made of
+
+| | |
+| --- | --- |
+| `src/core/` | Everything that draws nothing, carried over from phaser-card-engine **unchanged** with its tests: cards and suit vocabularies, `Stack` and `Hand` geometry, `cardFaceMetrics` and the three faces, shuffles and `riffleSplit`, the six decks and their inks, court palettes and the background parting, the tuck box as quads. Its own entry point, `felt/core`, and it runs in node. |
+| `src/gl/` | `Renderer` (one instanced program for every card and sprite, one depth-tested program for solid meshes), `Atlas` (every picture on a few 2048² layers of one texture array), `lens.ts` (the projection, written once in TypeScript and once in GLSL). |
+| `src/scene/` | `Board` (canvas, pixel ratio, fit, input, the sleep-when-still loop), `Node` and `Sprite`, `Tweens` with Phaser's config shape and ease names. |
+| `src/art/` | `CardSprite`, the face and back painters, suit pips, the court renderer and its worker, tuck box printing. |
+| `src/play/` | `throwCard`, `dealCards`, `layHand`, `orderStack`, `flipCard`, `riffleShuffle`, `TuckBox`. |
+
+## Why not Phaser
+
+The things phaser-card-engine had to work round are the reasons for this:
+
+- **A card was a Container of a dozen game objects** - a body image, a back
+  image, text for each index, an image per pip, a portrait and a frame. Here a
+  card is 32 floats: a face and a back, each a region of the atlas painted once
+  per look and shared by every card that looks like it, and a body the shader
+  cuts out of them. The rounded corners, the hairline edge and the drop shadow
+  are arithmetic in the fragment shader rather than three baked textures per
+  card size.
+- **Depth did not sort inside a Container**, which once silently flipped every
+  first-on-top pile. There is no container here: the board keeps one list
+  sorted by depth, then by creation order.
+- **HiDPI needed `createBoard` + `boardRoot` + a scaled root container.** The
+  board is in logical units and the canvas is at the device's ratio from the
+  start; every picture is rasterised at that ratio.
+- **Bending a card meant swapping it for a Mesh** for the length of a riffle,
+  snapshot and all. Here `bow`, `tilt`, `turn` and `z` are properties of every
+  card, zero by default, and cost nothing when they are zero.
+- **The tuck box needed three meshes in a careful order**, because Phaser
+  sorted faces within a mesh and never between them. Here its parts share a
+  depth buffer and occlude each other like solid things.
+
+Measured, in the same software-rendered headless Chrome: the hold'em riffle
+runs at **54 ms a frame against Phaser's 176**, the whole engine plus core is
+**21 kB gzipped** against Phaser's 331 kB, and the stacks page - 52 cards,
+every label, every slot - is **79 instances in 1 draw call**. A still board
+draws **0** frames.
+
+## Flat or 3D: the lens
+
+```ts
+createBoard({ ..., fov: 45 });               // default: real perspective for anything lifted
+createBoard({ ..., fov: 0 });                // orthographic: nothing ever foreshortens
+createBoard({ ..., lens: 'board' });         // one camera over the middle of the table
+```
+
+The camera sits over the table at whatever distance makes **z = 0 exactly
+board units**, so a flat game is pixel-identical whatever the lens and never
+has to know it exists. With the default `lens: 'local'` each card is seen from
+straight above itself, which is what Phaser's per-mesh projection did and what
+a card game usually wants: a card tipped in a corner looks the same as one
+tipped in the middle. `'board'` is the physically true picture.
+
+A card's pose is `x, y, z` (z towards the camera), `angle` in degrees in the
+table's plane, `tilt` (radians, top edge away), `turn` (radians about its long
+axis - half a turn shows the other side, mirrored back the right way round),
+and `bow` (a parabola down its length, positive dishes the middle away). A
+lifted card's shadow falls further down the table and softer.
+
+## From phaser-card-engine
+
+The names were kept wherever the idea survived, so a port is mostly deleting
+`this.root` and `scene`:
+
+| phaser-card-engine | felt |
+| --- | --- |
+| `createBoard({ scene })`, `boardRoot(this)` | `createBoard({...})` - no scene, no root |
+| `preloadCardArt(this, ...)` in `preload` | `loadCardArt(board, ...)`, any time (alias `preloadCardArt`) |
+| `new CardSprite(this, card, style)` | `new CardSprite(board, card, style)` - same `CardStyle` |
+| `orderStack(root, sprites, stack, base)` | `orderStack(sprites, stack, base)` |
+| `layHand(this, root, sprites, hand, opts)` | `layHand(board, sprites, hand, opts)` |
+| `throwCard(this, sprite, target, opts)` | `throwCard(board, sprite, target, opts)` + `arc` |
+| `riffleShuffle(this, root, sprites, stack)` | `riffleShuffle(board, sprites, stack)` |
+| `renderCourts(this, palette, opts)` | `renderCourts(board, palette, opts)` |
+| `suitTexture(scene, suit, color)` → key | `suitTexture(board, suit, color, size)` → region; `board.image(region, ...)` |
+| `new TuckBox(this, x, y, opts)` + `update` | `new TuckBox(board, x, y, opts)` - steps itself while it spins |
+| `toBoard(this, pointer)` | pointers arrive in board units already; `board.toBoard(clientX, clientY)` |
+| `this.input.setDraggable(sprite)` + `drag` events | `sprite.draggable = true`; `board.on('dragstart' \| 'drag' \| 'dragend')` |
+| `this.add.text`, `this.add.graphics` | `board.text(...)`, `board.graphic(w, h, paint)` |
+| `this.tweens.add({...})` | `board.tweens.add({...})` - same shape, same ease names |
+| `cardSnapshot`, `cardPlane`, `bendPlane` | gone: every card bends |
+| - | `flipCard(board, sprite)`: lift, roll half a turn, land the other side up |
+| - | `board.pick(x, y)`, `board.snapshot()`, `board.keepAwake()` |
+
+A card made before its art has loaded is painted with what is there and
+**repainted in place** when the rest arrives - suits, backs, the index font,
+or a court portrait. Every card sharing that face updates at once, because
+they are all looking at the same pixels. There is no preload phase to get
+wrong.
+
+## The demo
+
+```bash
+npm install
+npm run demo        # http://localhost:4390, and the LAN address
+```
+
+The same nine pages as phaser-card-engine's - stacks, card sizes, throwing,
+hold'em, hands, the deck editor, the riffle, the tuck box, card faces - ported
+to felt. Some do more than before: thrown cards arc off the felt, cards dealt
+face up flip over in the air, and the riffled packets are the cards
+themselves.
+
+## Testing
+
+```bash
+npm test            # typecheck (library, specs, demos) + 291 vitest specs in node
+npm run smoke -- --host=http://localhost:4390   # real Chrome, real WebGL2 (SwiftShader)
+```
+
+The smoke test drives every demo through CDP and checks what is on screen
+against what the geometry asked for: one draw call for the stacks page, the
+card a finger lands on is the one drawn in front, a real pointer drag between
+piles, all twelve courts rendered, messy angles settled and bounded, hold'em's
+deal order and final counts, the riffle bending all 52 without ever drawing the
+pile over the packets, hands re-fanning without spinning, the tuck box handing
+over its deck, throws leaving the felt - and that a still board draws no frames.
+
+## What is next
+
+This is the reimplementation. What it was built to be good at, and does not do
+yet:
+
+- **Multiplayer.** A deterministic, serialisable table state separate from the
+  view, so a server (or a peer) can be authoritative and every client animates
+  the same moves - turn-based and realtime both.
+- **Lighting and materials** for the 3D cards: a light direction, a sheen on
+  the stock, real cast shadows onto the felt rather than the card's own halo.
+- **A stress page** - a thousand cards in flight - to measure on real GPUs.
+
+## Licence
+
+CC0, as phaser-card-engine. The court art is Dmitry Fomin's CC0 English
+pattern; the fonts are OFL and Apache-2.0 - see `ATTRIBUTION.md`.

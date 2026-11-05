@@ -1,0 +1,19 @@
+# felt
+
+WebGL2 card-game engine; the Phaser-free successor to `~/code/phaser-card-engine`.
+
+- Node 24 (`.nvmrc`): `source ~/.nvm/nvm.sh && nvm use 24`
+- `npm test` — typecheck (lib + specs + demos) and vitest (node, no browser)
+- `npm run build` — tsc to `dist/`
+- Demo: `devrun up --name felt-demo --port-env PORT -- npx vite` (vite.config.ts reads `$PORT`)
+- Smoke (real Chrome via CDP + SwiftShader): `npm run smoke -- --host=$(devrun url felt-demo)`
+
+Layout: `src/core` is phaser-card-engine's pure half copied verbatim — change it
+there first if a fix should reach both. `src/gl` renderer/atlas/lens,
+`src/scene` board/nodes/tweens, `src/art` painters, `src/play` gestures.
+
+The projection is written twice — `src/gl/lens.ts` and `PROJECT` in
+`src/gl/shaders.ts` — and picking/`deckCentre` depend on them agreeing.
+
+Verify visual changes in a real browser (smoke + a screenshot); the bugs this
+lineage keeps hitting are "right numbers, wrong screen".

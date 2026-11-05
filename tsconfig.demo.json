@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    "types": ["vite/client"],
+    "baseUrl": ".",
+    "paths": { "felt": ["src/index.ts"], "felt/core": ["src/core/index.ts"] },
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "allowImportingTsExtensions": false
+  },
+  "include": ["demo/**/*.ts", "src/**/*.ts"],
+  "exclude": ["src/**/*.spec.ts"]
+}

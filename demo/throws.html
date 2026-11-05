@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>felt — throwing cards</title>
+    <style>
+      @font-face { font-family: 'Cinzel'; src: url('./fonts/cinzel-latin.woff2') format('woff2'); font-weight: 400 900; font-display: block; }
+      @font-face { font-family: 'Jost'; src: url('./fonts/jost-latin.woff2') format('woff2'); font-weight: 300 700; font-display: block; }
+      @font-face { font-family: 'Archivo'; src: url('./fonts/archivo-latin.woff2') format('woff2'); font-weight: 500 700; font-display: block; }
+      html, body { margin: 0; height: 100%; background: #0b2119; color: #cfead0; font-family: 'Jost', system-ui, sans-serif; }
+      body { display: flex; flex-direction: column; align-items: center; gap: 0.6rem; padding: 0.8rem; box-sizing: border-box; }
+      h1 { font-family: 'Cinzel', Georgia, serif; font-size: 1.1rem; letter-spacing: 0.06em; margin: 0; color: #fdfdfd; text-transform: uppercase; }
+      p { margin: 0; font-size: 0.8rem; text-align: center; max-width: 32rem; color: #9fc4a4; }
+      a { color: #ffd166; font-size: 0.8rem; }
+      #board { width: min(480px, 100%); flex: 1; touch-action: none; }
+      .row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; justify-content: center; }
+      button {
+        font-family: 'Cinzel', Georgia, serif; font-size: 0.75rem; letter-spacing: 0.05em;
+        text-transform: uppercase; color: #fdfdfd; background: #17594a;
+        border: 1px solid #cfead0; border-radius: 4px; padding: 0.4rem 0.8rem; cursor: pointer;
+      }
+      .home {
+        position: fixed; top: 0.55rem; left: 0.6rem; z-index: 20;
+        font-family: 'Cinzel', Georgia, serif; font-size: 0.66rem;
+        letter-spacing: 0.05em; text-transform: uppercase; text-decoration: none;
+        color: #fdfdfd; background: #17594a; border: 1px solid #cfead0;
+        border-radius: 4px; padding: 0.28rem 0.5rem; line-height: 1;
+      }
+      .home:hover, .home:focus-visible { border-color: #ffd166; color: #ffd166; }
+    </style>
+  </head>
+  <body>
+    <a class="home" href="./">&larr; Demos</a>
+    <h1>Throwing cards</h1>
+    <p>
+      <strong>Tap anywhere on the felt</strong> to throw a card at that spot, or
+      tap a pile to throw one onto it. A throw spins one whole turn and lands on
+      an exact angle, so the pile can redraw the card without it snapping.
+    </p>
+    <div id="board"></div>
+    <p id="note"></p>
+    <div class="row">
+      <button id="deal">Deal a hand</button>
+      <button id="spins">Spins: 1</button>
+      <button id="arc">Arc: on</button>
+      <button id="gather">Gather up</button>
+    </div>
+    <script type="module" src="./throws.ts"></script>
+  </body>
+</html>
