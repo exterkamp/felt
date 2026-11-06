@@ -101,7 +101,7 @@ console.log(`smoking ${host}`);
 await send('Page.navigate', { url: `${host}/` });
 await sleep(700);
 const tiles = JSON.parse(await evaluate(`JSON.stringify([...document.querySelectorAll('a.demo')].map(a => a.href))`));
-check(tiles.length === 16, `the home screen lists sixteen demos (${tiles.length})`);
+check(tiles.length === 17, `the home screen lists seventeen demos (${tiles.length})`);
 let reachable = 0;
 let wayBack = 0;
 let boards = 0;
@@ -651,7 +651,13 @@ const walls = JSON.parse(await evaluate(`(async () => {
   b.setFov(0);
   // Held by a corner, so it arrives turned and meets the wall corner first.
   // Let go well short of the wall, so it has room to build up speed into it.
-  const side = await flickFrom(f.deck().at(-1), 32, -8, 2500, 16, 3);
+  // Synthetic pointer events under software GL do not always come out fast
+  // enough to reach the wall: up to three tries, each with a fresh card.
+  let side;
+  for (let k = 0; k < 3; k++) {
+    side = await flickFrom(f.deck().at(-1), 32, -8, 2500, 16, 3);
+    if (side.afterWall > 10) break;
+  }
   b.setFov(45);
   return JSON.stringify({ up, side });
 })()`));
@@ -721,7 +727,7 @@ check(panel.was && panel.open && panel.titles.length >= 2 && panel.code.includes
 
 // --- the tour: a long page, a board per idea, its code inline ---------------
 console.log('\nthe tour');
-await open('tour.html', '__felt?.boards?.length === 8');
+await open('tour.html', '__felt?.boards?.length === 9');
 const tour = JSON.parse(await evaluate(`(async () => {
   const f = __felt; const wait = (ms) => new Promise(r => setTimeout(r, ms));
   let t = performance.now();
@@ -742,11 +748,68 @@ const tour = JSON.parse(await evaluate(`(async () => {
   while (f.boards.slice(1).some(x => x.renderer.instanceCount === 0) && performance.now() - t < 5000) await wait(100);
   return JSON.stringify({ regions, before, after: f.columns(), drawn: f.boards.map(x => x.renderer.instanceCount) });
 })()`));
-check(tour.regions.length === 9 && tour.regions.every(r => r.lines >= 2),
-  `the tour shows all nine sections' code, from its own source (${tour.regions.map(r => r.lines).join(', ')} lines)`);
-check(tour.drawn[0] === 0 && tour.drawn.slice(1).every(n => n > 0), `eight boards on one page, the first blank and the rest drawing (${tour.drawn.join(', ')})`);
+check(tour.regions.length === 10 && tour.regions.every(r => r.lines >= 2),
+  `the tour shows all ten sections' code, from its own source (${tour.regions.map(r => r.lines).join(', ')} lines)`);
+check(tour.drawn[0] === 0 && tour.drawn.slice(1).every(n => n > 0), `nine boards on one page, the first blank and the rest drawing (${tour.drawn.join(', ')})`);
 check(tour.after[0] === tour.before[0] - 1 && tour.after[1] === tour.before[1] + 1,
   `a card dragged off one column lands on the next (${tour.before.join('·')} → ${tour.after.join('·')})`);
+
+// --- solitaire: a game written as zone rules on a Table ---------------------
+console.log('\nsolitaire');
+await open('solitaire.html', '__felt?.columns?.length === 7');
+const sol = JSON.parse(await evaluate(`(async () => {
+  const f = __felt; const b = f.board; const wait = (ms) => new Promise(r => setTimeout(r, ms));
+  const rect = b.canvas.getBoundingClientRect();
+  const page = (x, y) => ({ clientX: rect.left + x / b.width * rect.width, clientY: rect.top + y / b.height * rect.height });
+  const fire = (type, x, y) => b.canvas.dispatchEvent(new PointerEvent(type, { ...page(x, y), pointerId: 15, bubbles: true }));
+  // Held by the strip of it that shows above the next card down, as a player would.
+  const drag = async (card, to) => {
+    const g = -32, x0 = card.x, y0 = card.y + g;
+    fire('pointerdown', x0, y0); await wait(120);
+    const t = to.next(); for (let i = 1; i <= 8; i++) { fire('pointermove', x0 + (t.x - x0) * i / 8, y0 + (t.y + g - y0) * i / 8); await wait(30); }
+    await wait(150); fire('pointerup', t.x, t.y + g); await wait(900);
+  };
+  while (f.table.busy) await wait(100);
+  const dealt = { sizes: f.columns.map(c => c.size), tops: f.columns.every(c => c.top.card.faceUp), stock: f.stock.size,
+    under: f.columns.every(c => c.cards.slice(0, -1).every(x => !x.card.faceUp)) };
+  // A column top dropped where the rules say no: sent back.
+  const a = f.columns[0], z = f.columns.find(c => c !== a && !c.accepts([a.top.card], a));
+  const card = a.top; await drag(card, z);
+  const refused = { stayed: a.top === card, size: z.size };
+  // Deal seeded games until one has a legal column-to-column move, and make it by hand.
+  let legal;
+  for (let s = 1; s <= 12 && !legal; s++) {
+    await f.deal(s);
+    for (const from of f.columns) for (const to of f.columns)
+      if (!legal && from !== to && to.accepts([from.top.card], from)) legal = { from, to, card: from.top, below: from.cards.at(-2) };
+  }
+  let made = null;
+  if (legal) { const before = legal.to.size; await drag(legal.card, legal.to); await wait(500);
+    made = { landed: legal.to.top === legal.card && legal.to.size === before + 1, uncovered: !legal.below || legal.below.card.faceUp }; }
+  // The stock: a tap turns one onto the waste.
+  const s = f.stock.top; fire('pointerdown', s.x, s.y); fire('pointerup', s.x, s.y); await wait(700);
+  const tapped = { waste: f.waste.size, up: f.waste.top?.card.faceUp };
+  // A run: the queen and jack on one column go together onto a king - set
+  // up with sync, the way a saved game or a server's state would be shown.
+  const setup = { 'column-0': ['clubs-K'], 'column-1': ['diamonds-9', 'hearts-Q', 'spades-J'] };
+  const named = new Set(Object.values(setup).flat());
+  const state = Object.fromEntries([f.stock, f.waste, ...f.foundations, ...f.columns].map(z => [z.id, []]));
+  await f.table.sync({ ...state, ...setup, stock: f.table.cards.map(c => c.card.id).filter(id => !named.has(id)) }, { instant: true });
+  for (const id of ['clubs-K', 'hearts-Q', 'spades-J']) f.table.card(id).setFaceUp(true);
+  f.table.card('diamonds-9').setFaceUp(false);
+  await wait(300);
+  await drag(f.table.card('hearts-Q'), f.columns[0]);
+  await wait(600);
+  const run = { onKing: f.columns[0].cards.map(c => c.card.id).join(), left: f.columns[1].cards.map(c => c.card.id + (c.card.faceUp ? '+' : '-')).join() };
+  return JSON.stringify({ dealt, refused, made, waste: tapped.waste, wasteUp: tapped.up, run });
+})()`));
+check(JSON.stringify(sol.dealt.sizes) === '[1,2,3,4,5,6,7]' && sol.dealt.tops && sol.dealt.under && sol.dealt.stock === 24,
+  `solitaire deals seven columns, each with its last card turned up, and 24 in the stock`);
+check(sol.refused.stayed, 'a card dropped where the rules say no goes back to its column');
+check(sol.made && sol.made.landed && sol.made.uncovered, `a legal move made by hand lands, and the card it uncovers turns up`);
+check(sol.waste === 1 && sol.wasteUp, 'a tap on the stock turns a card onto the waste, face up');
+check(sol.run.onKing === 'clubs-K,hearts-Q,spades-J' && sol.run.left === 'diamonds-9+',
+  `a run picked up by its first card moves together, and uncovers the card under it (${sol.run.onKing} / ${sol.run.left})`);
 
 // --- two seats: one game, three copies, in lockstep -------------------------
 console.log('\ntwo seats');

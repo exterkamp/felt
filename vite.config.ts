@@ -50,6 +50,7 @@ export default defineConfig({
         flick: resolve(__dirname, 'demo/flick.html'),
         magnets: resolve(__dirname, 'demo/magnets.html'),
         tour: resolve(__dirname, 'demo/tour.html'),
+        solitaire: resolve(__dirname, 'demo/solitaire.html'),
         stacks: resolve(__dirname, 'demo/stacks.html'),
         sizes: resolve(__dirname, 'demo/sizes.html'),
         throws: resolve(__dirname, 'demo/throws.html'),

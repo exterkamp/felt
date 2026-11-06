@@ -11,7 +11,8 @@ WebGL2 card-game engine; the Phaser-free successor to `~/code/phaser-card-engine
 Layout: `src/core` is phaser-card-engine's pure half copied verbatim — change it
 there first if a fix should reach both. `src/runtime` engine/clock/lifecycle/
 scenes/simulation, `src/gl` renderer/atlas/lens, `src/scene` board/nodes/tweens,
-`src/art` painters, `src/play` gestures.
+`src/art` painters, `src/play` gestures, `src/table` the Table (zones that own
+cards, moves, rules, drag-and-drop, sync) - what games should build on.
 
 Rules (see docs/runtime.md): nothing in module state but constants and the one
 `engine()`. Page-wide things are engine services; per-context things are board

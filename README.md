@@ -130,6 +130,47 @@ can't take the card doesn't pull it. `onRest(path)` reports
 `path.caught`, the index of the magnet that took it. The Magnetic stacks
 demo has one stack per suit.
 
+## The table: making a game
+
+Underneath, placement is geometry: a Stack or a Hand says where its *n*th
+card sits, and nothing more. Games built straight on that kept their own
+array of sprites next to every stack, and each wrote its own layout code,
+depth bands, in-flight bookkeeping and drag-and-drop. `createTable(board)`
+does that once.
+
+```ts
+const table = createTable(board);
+const stock = table.pile({ id: 'stock', x: 40, y: 70, faceUp: false, drag: false });
+const column = table.pile({
+  id: 'column-0', x: 40, y: 190, fan: 'down', step: 24, drag: 'run',
+  canTake: (cards) => cards.every((c) => c.faceUp),
+  accepts: (cards, pile) => !pile.topCard || rankValue(cards[0].rank) === rankValue(pile.topCard.rank) - 1,
+});
+stock.put(shuffle(buildDeck()));
+table.draggable();                        // the zones' rules decide every pick-up and drop
+table.on('move', ({ cards, from, to }) => { /* the game's turn */ });
+await table.move(stock.top!, column);     // thrown there, turned to the zone's side on landing
+```
+
+- **Zones**: `table.pile()` and `table.hand()` hold their cards, lay them
+  out in a depth band of their own, and turn arrivals to their `faceUp`.
+- **Moves**: `table.move(cards, zone)` takes the cards out of their old
+  zone at once and flies them in. `table.deal(from, zones, { rounds })`
+  deals round them, and `zone.put(cards)` places cards instantly.
+- **Rules**: each zone's `accepts` and `drag` / `canTake` drive
+  `table.draggable()`: what can be picked up, the drop outline, sending
+  back, carrying runs. With `{ flick: true }` they also drive the magnets of
+  a flicked card. They govern the player only; the game's own moves are
+  not checked.
+- **Sync**: `table.sync({ zoneId: cardIds })` shows a state kept somewhere
+  else (a `Simulation`, a server, a saved game) by moving only what isn't
+  where the state says.
+- **Events and sequences**: `move`, `take`, `drop`, `tap` and `refuse`
+  events, and `table.run(sequence)` so a deal can't start twice.
+
+See the Solitaire demo (Klondike as thirteen zones and their rules),
+Two seats (one `sync` per view), and section 9 of the tour.
+
 ## From phaser-card-engine
 
 The names were kept wherever the idea survived, so a port is mostly deleting

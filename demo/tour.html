@@ -78,7 +78,8 @@
       <h1>From a blank board</h1>
       <p class="lede">
         felt, one idea at a time: a board, a card, how a card is posed, stacks,
-        throwing cards onto them, dragging, hands, and flicking. Every section is
+        throwing cards onto them, dragging, hands, flicking, and the Table that
+        does all of it for you. Every section is
         live, and the code under each board is that board's code, taken from
         <code>demo/tour.ts</code> as it runs. Gold names are felt's.
       </p>
@@ -91,7 +92,8 @@
         <a href="#t-drag">6 · Dragging</a>
         <a href="#t-hand">7 · A hand</a>
         <a href="#t-flick">8 · Flicking</a>
-        <a href="#t-scene">9 · The scene</a>
+        <a href="#t-table">9 · A table</a>
+        <a href="#t-scene">10 · The scene</a>
       </nav>
 
       <section id="t-board">
@@ -115,7 +117,7 @@
           <li>Boards don't run their own loop. They are members of the page's one
             <code>engine()</code>, which owns time, the page lifecycle (hidden,
             frozen, back from the cache) and the art shared by every board. That
-            is why the eight boards on this page share one loop and one set of
+            is why the nine boards on this page share one loop and one set of
             card art.</li>
           <li>Card art is fetched by the cards that need it. A card asks its
             sheet for its face; the sheet fetches the suit art, the back and
@@ -353,12 +355,64 @@
         <pre class="code" data-region="8. Flicking"></pre>
       </section>
 
+      <section id="t-table">
+        <h2><span class="n">9</span>A table</h2>
+        <p>
+          Sections 4 to 8 did by hand what every card game needs: an array of
+          sprites next to each stack, a layout function, depth bands, the
+          bookkeeping that lets two throws at one pile land in order, and forty
+          lines of drag-and-drop. A <strong>Table</strong> does all of that
+          once. <code>createTable(board)</code> makes one, and
+          <code>table.pile()</code> and <code>table.hand()</code> make
+          <strong>zones</strong>: a stack or a hand that holds its own cards,
+          lays them out in a depth band of its own, and turns each card that
+          lands in it to its side (<code>faceUp</code>).
+        </p>
+        <ul class="points">
+          <li><code>table.move(card, zone)</code> is the one way a card changes zone.
+            It leaves its old zone at once, so the game can read the new state
+            straight away and a second move aims past it. Then it flies to its
+            place and turns over as it lands. <code>table.deal(from, zones)</code>
+            deals round them like a dealer.</li>
+          <li><strong>Rules live on the zones.</strong> <code>accepts(cards, zone, from)</code>
+            says what may land there, and <code>drag</code> (<code>'top'</code>, <code>'run'</code>,
+            <code>'any'</code>, <code>false</code>) with <code>canTake</code> says what may be
+            picked up. <code>table.draggable()</code> uses both: what you may not pick up
+            isn't lifted, the outline only shows over a zone that takes the card, and a drop
+            anywhere else goes back. With <code>flick</code>, the zones that accept a card
+            are the magnets that draw it in.</li>
+          <li>The rules govern the <em>player</em>. The game's own moves are not
+            checked, so a deal can put anything anywhere.</li>
+          <li><code>table.sync({ zoneId: cardIds })</code> shows a state that lives
+            elsewhere, such as a <code>Simulation</code>, a server or a saved game.
+            Whatever isn't where the state says flies there, and nothing else moves.
+            The Two seats demo shows each player's view this way.</li>
+          <li><code>table.on('move' | 'take' | 'drop' | 'tap' | 'refuse')</code> tells the game
+            what happened, and <code>table.run(sequence)</code> keeps a deal from being
+            started twice.</li>
+        </ul>
+        <p>
+          Below, the reds pile takes only red cards and the blacks only black.
+          Drag from the deck, or between the piles. The Solitaire demo is the
+          same idea at full size: Klondike as thirteen zones and their rules.
+        </p>
+        <div class="where">Where it lives: <code>src/table/table.ts</code>. Under it, everything in
+          sections 4 to 8 is still there to use directly.</div>
+        <div id="b-table" class="board drag" style="aspect-ratio: 480 / 300"></div>
+        <div class="controls">
+          <button id="table-deal">Deal six</button>
+          <button id="table-reset">New deck</button>
+        </div>
+        <p class="status" id="s-table">Drag a card from the deck onto a pile.</p>
+        <pre class="code" data-region="9. A table"></pre>
+      </section>
+
       <section id="t-scene">
-        <h2><span class="n">9</span>The scene around it</h2>
+        <h2><span class="n">10</span>The scene around it</h2>
         <p>
           This page is one <strong>scene</strong>:
           <code>defineScene({ name, create(ctx) { … } })</code>. Everything above
-          was made through <code>ctx</code>. The eight boards came from
+          was made through <code>ctx</code>. The nine boards came from
           <code>ctx.board()</code>, the buttons were wired with
           <code>ctx.listen()</code>, and any timers would use
           <code>ctx.delay()</code> or <code>ctx.every()</code>. So when the
@@ -376,7 +430,7 @@
         <div class="where">Where it lives: <code>src/runtime/scene.ts</code> (scenes, the director),
           <code>src/runtime/disposables.ts</code> (teardown), <code>src/runtime/simulation.ts</code> (lockstep games),
           and <code>docs/runtime.md</code> for why.</div>
-        <pre class="code" data-region="9. The scene"></pre>
+        <pre class="code" data-region="10. The scene"></pre>
       </section>
     </main>
     <script type="module" src="./tour.ts"></script>

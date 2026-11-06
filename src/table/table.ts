@@ -503,6 +503,9 @@ export class Table {
         if (!was && !options.from && !this.moving.has(card)) appear.add(card);
         flights.push({ card, to });
       }
+      // Cards it held that the state leaves out are let go loose - unless a
+      // zone named later in the state claims them.
+      for (const card of to.list) if (!sprites.includes(card) && this.where.get(card) === to) this.where.delete(card);
       to.list.length = 0;
       to.list.push(...sprites);
       for (const card of sprites) this.where.set(card, to);

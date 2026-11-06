@@ -1,20 +1,21 @@
 import './serve';
 import {
   CARD_HEIGHT, CARD_WIDTH, CardSprite, FanDirection, Rank, Stack, Suit, animatorOf, buildDeck, cardRect,
-  dealCards, defineHand, defineScene, defineStack, flickCard, flipCard, layHand, loadCardArt, nextPosition,
+  createTable, dealCards, defineHand, defineScene, isRed, defineStack, flickCard, flipCard, layHand, loadCardArt, nextPosition,
   orderStack, seeded, shuffle, stackPositions, stackUnder, throwCard, topCardIndex,
 } from 'felt';
 import { showRegions } from './code';
 import { expose, standalone } from './kit';
 
 // From a blank board: the engine one idea at a time, a board per idea, on
-// one long page. Each `#region` below is shown in the page under the board
+// one long page. Section 9 then does the same with the Table, in a
+// fraction of the code. Each `#region` below is shown in the page under the board
 // it builds (see tour.html's `pre[data-region]`), so the text and the code
 // can't drift apart: what you read is what runs.
 
 const FELT = '#13463a';
 
-// #region 9. The scene
+// #region 10. The scene
 export const scene = defineScene({
   name: 'tour',
   create(ctx) {
@@ -314,13 +315,50 @@ export const scene = defineScene({
     });
     // #endregion
 
+    // --- 9 -----------------------------------------------------------------
+    // #region 9. A table
+    const tableBoard = ctx.board({ parent: 'b-table', width: 480, height: 300, backgroundColor: FELT });
+    const felt = createTable(tableBoard);
+    const source = felt.pile({ id: 'deck', x: 400, y: 220, faceUp: false });
+    // Two zones, each with its rule. Everything a drag does follows from them.
+    const reds = felt.pile({
+      id: 'reds', x: 80, y: 70, fan: 'down', step: 22, maxSpread: 150, faceUp: true,
+      accepts: ([card]) => isRed(card.suit),
+    });
+    const blacks = felt.pile({
+      id: 'blacks', x: 200, y: 70, fan: 'down', step: 22, maxSpread: 150, faceUp: true,
+      accepts: ([card]) => !isRed(card.suit),
+    });
+    felt.draggable();
+    felt.on('move', ({ cards, from, to }) => say('s-table',
+      `${cards[0].card.rank} of ${cards[0].card.suit}: ${from?.id ?? 'loose'} → ${to?.id ?? 'loose'}`));
+    felt.on('refuse', ({ cards }) => say('s-table', `The ${cards[0].card.suit} don't go there: back it goes.`));
+    // The game's own moves: each card to the pile whose rule takes it.
+    const dealSix = () => felt.run(async () => {
+      const landed: Promise<void>[] = [];
+      for (let i = 0; i < 6 && source.top; i++) {
+        const card = source.top;
+        const to = [reds, blacks].find((pile) => pile.accepts([card.card]))!;
+        landed.push(felt.move(card, to, { delay: i * 90, spins: 1, arc: 20 }));
+      }
+      await Promise.all(landed);
+    });
+    ctx.listen(ctx.$('#table-deal'), 'click', () => void dealSix());
+    ctx.listen(ctx.$('#table-reset'), 'click', () => {
+      felt.clear();
+      source.put(shuffle(buildDeck(), seeded(Date.now() % 1000)));
+    });
+    source.put(shuffle(buildDeck(), seeded(9)));
+    // #endregion
+
     expose({
       board: dragBoard,
-      boards: [blank, table, poseBoard, stackBoard, throwBoard, dragBoard, handBoard, flickBoard],
+      boards: [blank, table, poseBoard, stackBoard, throwBoard, dragBoard, handBoard, flickBoard, tableBoard],
+      felt, reds, blacks, source,
       columns: () => columns.map((c) => c.cards.length), pile: () => pileCards, landed: () => landed.length,
       held: () => held.length, posed,
     });
-    // #region 9. The scene
+    // #region 10. The scene
   },
 });
 
