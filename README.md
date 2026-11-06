@@ -87,6 +87,18 @@ axis - half a turn shows the other side, mirrored back the right way round),
 and `bow` (a parabola down its length, positive dishes the middle away). A
 lifted card's shadow falls further down the table and softer.
 
+**Picking up.** On a board with perspective, a dragged card comes up off
+the felt. Its shadow falls further out, softer, with a wide penumbra. It
+leans into the drag: it rolls and tips away from the direction of pull, and
+sways a little in the plane. Springs settle it when the hand stops, and it
+drops back when let go. This is the board's own behaviour, so no game code is
+needed for it. It is one offset on the card, so the game's own `setPosition`,
+layouts and throws compose with it. A `dragstart` handler can
+`pointer.refuse()` a card that is not to be moved (one under the top of a
+pile). Tune it with `createBoard({ pickUp: { lift, maxSwivel, maxSway,
+stiffness, damping } })`, or turn it off with `pickUp: false`; on a flat
+board (`fov: 0`) it is off.
+
 ## From phaser-card-engine
 
 The names were kept wherever the idea survived, so a port is mostly deleting

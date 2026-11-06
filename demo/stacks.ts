@@ -200,13 +200,16 @@ export const scene = defineScene({
         piles.filter((p) => !p.cards.includes(view)).map((p) => ({ stack: p.stack, count: p.cards.length })));
     }
 
-    board.on('dragstart', (_pointer, node) => {
+    board.on('dragstart', (pointer, node) => {
       const view = node as CardSprite;
       const from = piles.find((p) => p.cards.includes(view));
-      if (!from) return;
-      // The card drawn in front, which on a first-on-top stack is the oldest.
-      const front = topCardIndex(from.stack, from.cards.length);
-      if (front === undefined || from.cards[front] !== view) return;
+      // Only the card drawn in front comes away - which on a first-on-top
+      // stack is the oldest. Any other is refused, so it is not picked up.
+      const front = from ? topCardIndex(from.stack, from.cards.length) : undefined;
+      if (!from || front === undefined || from.cards[front] !== view) {
+        pointer.refuse?.();
+        return;
+      }
       dragging = { view, from };
       view.depth = HELD_DEPTH;
     });

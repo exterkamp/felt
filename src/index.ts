@@ -15,6 +15,8 @@ export { Sprite } from './scene/sprite.js';
 export type { SpriteOptions } from './scene/sprite.js';
 export { Tween, Tweens } from './scene/tweens.js';
 export { fpsMeter } from './scene/fps.js';
+export { PickUp } from './scene/pick-up.js';
+export type { Liftable, PickUpOptions } from './scene/pick-up.js';
 export { Engine, createEngine, engine, serviceOf } from './runtime/engine.js';
 export type { EngineEvent, EngineMember, EngineOptions } from './runtime/engine.js';
 export { ManualClock, RafClock } from './runtime/clock.js';

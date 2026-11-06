@@ -3,6 +3,7 @@ import { lensDistance } from '../gl/lens.js';
 import { DrawItem, MeshItem, Renderer } from '../gl/renderer.js';
 import { Engine, EngineMember, engine as pageEngine } from '../runtime/engine.js';
 import type { LifecycleEvent } from '../runtime/lifecycle.js';
+import { PickUp, PickUpOptions } from './pick-up.js';
 import { Node } from './node.js';
 import { Sprite, SpriteOptions } from './sprite.js';
 import { Tweens } from './tweens.js';
@@ -58,6 +59,13 @@ export interface BoardOptions {
    * it shares. Default: the page's (`engine()`).
    */
   engine?: Engine;
+  /**
+   * What a dragged node does: lifts off the felt (its shadow falling further
+   * out) and swivels with the motion of the drag, settling when it stops and
+   * dropping back when let go. On by default wherever there is perspective
+   * (fov above 0); `false` for none, or options to tune it.
+   */
+  pickUp?: boolean | PickUpOptions;
 }
 
 /**
@@ -81,6 +89,12 @@ export interface BoardPointer {
   /** How far it has moved since it went down. */
   distance: number;
   event: PointerEvent;
+  /**
+   * In a `dragstart` handler: this node is not to be dragged after all (a
+   * card under the top of a pile). It is not picked up, and no `drag` or
+   * `dragend` follow.
+   */
+  refuse?(): void;
 }
 
 type Handler = (...args: any[]) => void;
@@ -121,6 +135,8 @@ export class Board implements EngineMember {
   private readonly transparent: boolean;
   /** Whose loop it runs on. */
   readonly engine: Engine;
+  /** Lifts and swivels whatever is being dragged; undefined on a flat board, or if turned off. */
+  readonly pickUp?: PickUp;
   private unlistenCanvas: () => void = () => {};
   private watchdog: ReturnType<typeof setTimeout> | undefined;
   /** Times a dead context was replaced with a new canvas. */
@@ -194,6 +210,11 @@ export class Board implements EngineMember {
 
     this.engine = options.engine ?? pageEngine();
     this.cleanup.push(this.engine.add(this));
+    const pickUp = options.pickUp ?? Number.isFinite(this.distance);
+    if (pickUp) {
+      this.pickUp = new PickUp(this.engine, typeof pickUp === 'object' ? pickUp : {});
+      this.cleanup.push(() => this.pickUp!.clear());
+    }
 
     this.fit();
     if (typeof ResizeObserver !== 'undefined') {
@@ -451,9 +472,10 @@ export class Board implements EngineMember {
     const down = (event: PointerEvent) => {
       const at = this.toBoard(event.clientX, event.clientY);
       const node = this.pick(at.x, at.y);
-      const pointer = {
+      const pointer: BoardPointer & { dragging?: Node } = {
         x: at.x, y: at.y, downX: at.x, downY: at.y, id: event.pointerId,
         node, distance: 0, event, dragging: undefined as Node | undefined,
+        refuse: () => { pointer.dragging = undefined; },
       };
       this.pointers.set(event.pointerId, pointer);
       try { canvas.setPointerCapture(event.pointerId); } catch { /* synthetic */ }
@@ -462,6 +484,8 @@ export class Board implements EngineMember {
       if (node?.draggable) {
         pointer.dragging = node;
         this.emit('dragstart', pointer, node);
+        // Still the game's to drag once it has had its say: up it comes.
+        if (pointer.dragging) this.pickUp?.lift(node);
       }
     };
     const move = (event: PointerEvent) => {
@@ -487,7 +511,10 @@ export class Board implements EngineMember {
       pointer.y = at.y;
       pointer.event = event;
       this.pointers.delete(event.pointerId);
-      if (pointer.dragging) this.emit('dragend', pointer, pointer.dragging);
+      if (pointer.dragging) {
+        this.emit('dragend', pointer, pointer.dragging);
+        this.pickUp?.drop(pointer.dragging);
+      }
       this.emit('pointerup', pointer);
       // A tap: down and up without wandering. What a button is, on a table.
       if (pointer.distance < 8 && event.type === 'pointerup') this.emit('tap', pointer);

@@ -167,6 +167,38 @@ const moved = await evaluate(`(async () => {
 })()`);
 check(moved === true, 'a card dragged onto another stack joins it');
 
+// Picked up: off the felt, swinging with the drag, and back down after.
+const pick = JSON.parse(await evaluate(`(async () => {
+  const b = __felt.board; const rect = b.canvas.getBoundingClientRect();
+  const page = (x, y) => ({ clientX: rect.left + x / b.width * rect.width, clientY: rect.top + y / b.height * rect.height });
+  const fire = (type, x, y) => b.canvas.dispatchEvent(new PointerEvent(type, { ...page(x, y), pointerId: 9, bubbles: true }));
+  const deck = __felt.piles().find(p => p.cards.length > 3); const card = deck.cards[deck.cards.length - 1];
+  const x0 = card.x, y0 = card.y; let high = 0, swung = 0;
+  fire('pointerdown', x0, y0);
+  await new Promise(r => setTimeout(r, 350));
+  const lifted = card.shown.z;
+  for (let i = 1; i <= 12; i++) {
+    fire('pointermove', x0 - i * 12, y0 + i * 4);
+    await new Promise(r => setTimeout(r, 30));
+    high = Math.max(high, card.shown.z); swung = Math.max(swung, Math.abs(card.shown.turn), Math.abs(card.shown.angle - card.angle) / 30);
+  }
+  await new Promise(r => setTimeout(r, 900));
+  const settled = Math.abs(card.shown.turn) + Math.abs(card.shown.tilt);
+  fire('pointerup', x0 - 144, y0 + 48);
+  await new Promise(r => setTimeout(r, 1500));
+  // A card under the top of a pile: refused by the game, so never lifted.
+  const pile = __felt.piles().find(p => p.cards.length > 3 && p.stack.fan !== 'none');
+  const under = pile.cards[0] === pile.cards[pile.cards.length - 1] ? pile.cards[1] : pile.cards.find((c, i, a) => i !== a.length - 1 && c.hitTest(c.x, c.y));
+  let underZ = 0;
+  if (under) { fire('pointerdown', under.x, under.y); await new Promise(r => setTimeout(r, 300)); underZ = under.shown.z;
+    fire('pointerup', under.x, under.y); }
+  return JSON.stringify({ lifted, high, swung, settled, after: card.shown.z, holding: b.pickUp.holding(card), underZ, hasUnder: !!under });
+})()`));
+check(pick.lifted > 15 && pick.high > 20, `a card picked up comes off the felt (${pick.high.toFixed(1)} units)`);
+check(pick.swung > 0.05 && pick.settled < 0.02, `swivels with the drag and settles when the hand stops (${pick.swung.toFixed(2)} rad at most)`);
+check(pick.after === 0 && !pick.holding, 'and put down, is back on the table with nothing left on it');
+check(!pick.hasUnder || pick.underZ === 0, 'a card the game refuses to drag is not picked up');
+
 const courts = await evaluate(`(async () => { await new Promise(r => setTimeout(r, 1500));
   const art = __felt.board.services.get('card-art');
   return [...['J','Q','K']].flatMap(r => ['spades','hearts','diamonds','clubs'].map(s => [r, s]))

@@ -64,7 +64,7 @@ void main() {
   // further away and softer - clipped to the card's own margin it would end
   // in a hard edge half way across the felt.
   float lift = max(0.0, i_place.z);
-  float margin = i_size.w * (1.0 + lift * 0.05) + lift * 0.3;
+  float margin = i_size.w * (1.0 + lift * 0.05) + lift * 0.8;
   vec2 local = vec2((a_grid.x - 0.5) * (width + 2.0 * margin),
                     (a_grid.y - 0.5) * (height + 2.0 * margin));
 
@@ -181,14 +181,22 @@ void main() {
     float k = size.x / 60.0;
     // A card lifted off the table throws its shadow further and softer.
     float lift = v_lift;
-    vec2 drop = v_down * (2.5 * k + lift * 0.25);
+    vec2 drop = v_down * (2.5 * k + lift * 0.45);
     vec2 p = v_local - drop;
     float spread = 1.0 + lift * 0.03;
-    float fade = v_layers.w / (1.0 + lift * 0.015);
+    // Held up, it reads darker against the felt than a card lying on it -
+    // without it, on a dark cloth, a picked-up card's shadow all but vanishes.
+    float fade = v_layers.w * (1.0 + 0.5 * min(1.0, lift / 20.0)) / (1.0 + lift * 0.006);
     float a1 = shadowLayer(p, half_, radius, 3.8 * k * spread, 0.10, aa + 1.6 * k * spread);
     float a2 = shadowLayer(p, half_, radius, 2.2 * k * spread, 0.13, aa + 1.0 * k * spread);
     float a3 = shadowLayer(p, half_, radius, 1.0 * k * spread, 0.16, aa + 0.6 * k * spread);
-    shadow = (1.0 - (1.0 - a1) * (1.0 - a2) * (1.0 - a3)) * fade;
+    // A card in the air - picked up, mid-throw - also casts a wide, soft
+    // penumbra, which is most of what says "above the table". Nothing at
+    // rest: a card lying on the felt looks as it always has.
+    float a4 = lift > 0.0
+      ? shadowLayer(p, half_, radius, 6.0 * k * spread, 0.2 * min(1.0, lift / 18.0), aa + 4.5 * k * spread)
+      : 0.0;
+    shadow = (1.0 - (1.0 - a1) * (1.0 - a2) * (1.0 - a3) * (1.0 - a4)) * fade;
     // Faded out before the edge of the quad, so it never ends in a line.
     vec2 room = half_ + v_margin - abs(v_local);
     shadow *= clamp(min(room.x, room.y) / max(1.0, v_margin * 0.25), 0.0, 1.0);
