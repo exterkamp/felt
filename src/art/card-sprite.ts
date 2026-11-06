@@ -104,7 +104,8 @@ export class CardSprite<S extends string = Suit> extends Node {
     // or a size dragged never blinks the cards out. The look it is leaving
     // stays held till then.
     const showing = this.waitForArt
-      ? this.held ?? (this.faces.ready() && this.backs.ready() ? { faces: this.faces, backs: this.backs } : undefined)
+      ? this.held ?? (this.faces.readyFor(this.card.suit, this.card.rank) && this.backs.ready()
+        ? { faces: this.faces, backs: this.backs } : undefined)
       : undefined;
     const faces = this.sheets.acquireFaces(next, showing !== undefined);
     const backs = this.sheets.acquireBack(next);
@@ -190,7 +191,7 @@ export class CardSprite<S extends string = Suit> extends Node {
 
   /** The sheets it is drawn from this frame, if any. */
   private drawn(): { faces: FaceSheet; backs: BackSheet } | undefined {
-    if (!this.waitForArt || (this.faces.ready() && this.backs.ready())) {
+    if (!this.waitForArt || (this.faces.readyFor(this.card.suit, this.card.rank) && this.backs.ready())) {
       if (this.held) {
         this.sheets.releaseFaces(this.held.faces);
         this.sheets.releaseBack(this.held.backs);
@@ -203,7 +204,7 @@ export class CardSprite<S extends string = Suit> extends Node {
     // Still being painted: shown meanwhile from the same look at another
     // size - a card resized or made at a new size is never blank while one
     // is there to stand in, only a little soft for a moment.
-    this.held ??= this.sheets.standIn(this.faces, this.backs);
+    this.held ??= this.sheets.standIn(this.faces, this.backs, this.card.suit, this.card.rank);
     return this.held;
   }
 

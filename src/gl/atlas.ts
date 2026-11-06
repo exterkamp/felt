@@ -235,6 +235,15 @@ export class Atlas {
     this.evictUnused();
     const recycled = this.reuse(width, height, true);
     if (recycled) return recycled;
+    // A page with nothing left on it that anyone uses is empty, whatever its
+    // free list says: start it again from the top. Without this a card size
+    // that only grows never fits the slots its smaller sizes left, and every
+    // step of a size slider took fresh pages - sixteen layers of 2048 square,
+    // a quarter of a gigabyte of texture, which a real GPU may not give.
+    for (const i of this.reclaimPages()) {
+      const placed = this.place(i, width, height);
+      if (placed) return placed;
+    }
     if (this.pages.length < this.maxPages) {
       this.addPage();
       const placed = this.place(this.pages.length - 1, width, height);
@@ -280,6 +289,25 @@ export class Atlas {
       list.push(region);
       this.free.set(slot, list);
     }
+  }
+
+  /** Empties every page no live picture is on. Answers which. */
+  private reclaimPages(): number[] {
+    const live = new Set<number>();
+    for (const region of this.cache.values()) live.add(region.page);
+    const emptied: number[] = [];
+    this.pages.forEach((page, i) => {
+      if (live.has(i) || !page.shelves.length) return;
+      page.shelves = [];
+      page.bottom = 0;
+      emptied.push(i);
+    });
+    if (emptied.length) {
+      for (const [slot, list] of this.free) this.free.set(slot, list.filter((r) => !emptied.includes(r.page)));
+    }
+    // An empty page that was never written is as good as a reclaimed one.
+    this.pages.forEach((page, i) => { if (!page.shelves.length && !emptied.includes(i)) emptied.push(i); });
+    return emptied;
   }
 
   private addPage(): void {

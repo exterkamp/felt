@@ -107,6 +107,14 @@ export class FaceSheet {
   private readonly suitArt: Readonly<Record<string, string>>;
   private readonly pxW: number;
   private readonly pxH: number;
+  /**
+   * Whether it paints the whole deck ahead of time. Only while all fifty-two
+   * fit on one atlas page: a sheet of big cards at a high pixel ratio is a
+   * page and a half of texture, and painting faces nobody shows is what
+   * filled the GPU. A sheet that does not warm paints each face when a card
+   * first shows it, and that card alone waits for it.
+   */
+  readonly wholeDeck: boolean;
 
   constructor(private readonly board: Board, readonly key: string, style: ResolvedStyle) {
     this.metrics = style.metrics;
@@ -121,6 +129,18 @@ export class FaceSheet {
     this.suitArt = style.suitArt;
     this.pxW = Math.ceil(this.metrics.width * this.ratio);
     this.pxH = Math.ceil(this.metrics.height * this.ratio);
+    const cellArea = (this.pxW + 4) * (this.pxH + 4);
+    this.wholeDeck = SUITS.length * RANKS.length * cellArea <= board.atlas.size * board.atlas.size;
+  }
+
+  /**
+   * Whether a card showing this face can be drawn: the whole sheet finished,
+   * for a sheet that warms the deck; else that one face.
+   */
+  readyFor(suit: string, rank: string): boolean {
+    if (this.wholeDeck) return this.ready();
+    const region = this.cells.get(`${suit}|${rank}`);
+    return region !== undefined && CardArt.of(this.board).finished(region);
   }
 
   /** The cell for one face, painted now if it never has been. */
@@ -180,7 +200,7 @@ export class FaceSheet {
     let done = 0;
     for (const region of this.cells.values()) if (art.finished(region)) done++;
     let total = this.cells.size;
-    for (const suit of SUITS) for (const rank of RANKS) if (!this.cells.has(`${suit}|${rank}`)) total++;
+    if (this.wholeDeck) for (const suit of SUITS) for (const rank of RANKS) if (!this.cells.has(`${suit}|${rank}`)) total++;
     return { done, total };
   }
 
@@ -204,6 +224,7 @@ export class FaceSheet {
    * Answers whether there is anything left to do.
    */
   prewarm(deadline: number): boolean {
+    if (!this.wholeDeck) return false;
     for (const suit of SUITS) {
       for (const rank of RANKS) {
         if (this.cells.has(`${suit}|${rank}`)) continue;
@@ -476,23 +497,25 @@ export class CardSheets {
    * (larger first, so it is never blurrier than it must be). Counted: give
    * them back with `releaseFaces` / `releaseBack`. Undefined if there are none.
    */
-  standIn(faces: FaceSheet, backs: BackSheet): { faces: FaceSheet; backs: BackSheet } | undefined {
-    const f = faces.ready() ? faces : this.nearest(this.faces.values(), faces);
-    const b = backs.ready() ? backs : this.nearest(this.backs.values(), backs);
+  standIn(faces: FaceSheet, backs: BackSheet, suit: string, rank: string):
+    { faces: FaceSheet; backs: BackSheet } | undefined {
+    const f = faces.readyFor(suit, rank) ? faces
+      : this.nearest(this.faces.values(), faces, (sheet) => (sheet as FaceSheet).readyFor(suit, rank));
+    const b = backs.ready() ? backs : this.nearest(this.backs.values(), backs, (sheet) => sheet.ready());
     if (!f || !b) return undefined;
     if (f.users++ === 0) this.idleFaces.delete(f);
     if (b.users++ === 0) this.idleBacks.delete(b);
     return { faces: f, backs: b };
   }
 
-  private nearest<T extends FaceSheet | BackSheet>(all: Iterable<T>, want: T): T | undefined {
+  private nearest<T extends FaceSheet | BackSheet>(all: Iterable<T>, want: T, usable: (sheet: T) => boolean): T | undefined {
     const wanted = this.families.get(want);
     if (!wanted) return undefined;
     let best: T | undefined;
     let score = Infinity;
     for (const sheet of all) {
       const it = this.families.get(sheet);
-      if (sheet === want || !it || it.family !== wanted.family || !sheet.ready()) continue;
+      if (sheet === want || !it || it.family !== wanted.family || !usable(sheet)) continue;
       const apart = Math.abs(Math.log(it.width / wanted.width)) + (it.width < wanted.width ? 0.05 : 0);
       if (apart < score) { score = apart; best = sheet; }
     }

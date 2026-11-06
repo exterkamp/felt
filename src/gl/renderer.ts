@@ -188,20 +188,40 @@ export class Renderer {
   /**
    * Makes sure the texture has a layer for every atlas page.
    *
-   * Grown by doubling, and the old layers are copied across on the GPU - the
-   * pixels exist nowhere else, which is the point: nothing on the CPU side
-   * holds a 16MB page per layer, and nothing is ever re-uploaded whole.
+   * Grown a layer or two at a time, and the old layers are copied across on
+   * the GPU - the pixels exist nowhere else, which is the point: nothing on
+   * the CPU side holds a 16MB page per layer, and nothing is ever re-uploaded
+   * whole. Not by doubling: every layer is 16MB of video memory, and ten
+   * pages doubled to twenty was a 320MB texture a real GPU could refuse -
+   * and a refused texture is a board with no cards on it at all.
    */
   private ensureLayers(pages: number): void {
     const gl = this.gl;
     if (this.texture && pages <= this.textureLayers) return;
     const size = this.atlas.size;
-    const layers = Math.min(this.maxTextureLayers, Math.max(4, pages * 2, this.textureLayers * 2));
-    const next = gl.createTexture()!;
-    let copied = true;
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D_ARRAY, next);
-    gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA8, size, size, layers);
+    // A spare layer if it can be had, else exactly what is needed.
+    let next: WebGLTexture | null = null;
+    let layers = 0;
+    for (const want of [Math.max(2, pages + 1), pages]) {
+      layers = Math.min(this.maxTextureLayers, want);
+      while (gl.getError() !== gl.NO_ERROR) { /* clear anything earlier, so the check is this one's */ }
+      next = gl.createTexture()!;
+      gl.bindTexture(gl.TEXTURE_2D_ARRAY, next);
+      gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA8, size, size, layers);
+      if (gl.getError() === gl.NO_ERROR) break;
+      gl.deleteTexture(next);
+      next = null;
+    }
+    if (!next) {
+      // Refused outright: keep the texture there is, so what is on the table
+      // stays drawn, and say so once.
+      if (!this.refused) console.warn(`felt: the GPU refused a ${pages}-layer atlas texture`);
+      this.refused = true;
+      if (this.texture) gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.texture);
+      return;
+    }
+    let copied = true;
     gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -209,7 +229,7 @@ export class Renderer {
     if (this.texture) {
       const fb = gl.createFramebuffer();
       gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fb);
-      for (let layer = 0; layer < this.textureLayers; layer++) {
+      for (let layer = 0; layer < Math.min(this.textureLayers, layers); layer++) {
         gl.framebufferTextureLayer(gl.READ_FRAMEBUFFER, gl.COLOR_ATTACHMENT0, this.texture, 0, layer);
         gl.copyTexSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, layer, 0, 0, size, size);
       }
@@ -225,6 +245,10 @@ export class Renderer {
     this.textureLayers = layers;
     if (!copied) this.atlas.repaintAll();
   }
+
+  /** Whether the GPU has refused a texture as big as the atlas asked for. */
+  refused = false;
+
 
   /** The atlas's sink: one freshly painted picture, uploaded now. */
   private upload(page: number, x: number, y: number, width: number, height: number,

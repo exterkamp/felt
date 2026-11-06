@@ -528,8 +528,11 @@ const resize = JSON.parse(await evaluate(`(async () => {
   const slider = document.getElementById('size');
   for (let w = 60; w <= 140; w += 4) { slider.value = String(w); slider.dispatchEvent(new Event('input')); await wait(40); fewest.size = Math.min(fewest.size, shown()); }
   for (let k = 0; k < 3; k++) { document.getElementById('deck').click(); for (let i = 0; i < 4; i++) { await wait(50); fewest.deck = Math.min(fewest.deck, shown()); } }
-  return JSON.stringify({ ...fewest, cards: __felt.cards().length });
+  const b = __felt.board;
+  return JSON.stringify({ ...fewest, cards: __felt.cards().length, pages: b.atlas.pages.length, layers: b.renderer.textureLayers });
 })()`));
+check(resize.layers <= resize.pages + 1 && resize.pages <= 6,
+  `and the art texture stays the size of what is shown (${resize.pages} pages, ${resize.layers} layers after the drag)`);
 check(resize.size === resize.cards && resize.deck === resize.cards,
   `resizing and restyling never blanks a card (fewest drawn: ${resize.size} while resizing, ${resize.deck} changing deck, of ${resize.cards})`);
 
