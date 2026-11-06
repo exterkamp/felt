@@ -168,6 +168,35 @@ await table.move(stock.top!, column);     // thrown there, turned to the zone's 
 See the Solitaire demo (Klondike as thirteen zones and their rules),
 Two seats (one `sync` per view), and section 9 of the tour.
 
+## Etching the felt
+
+The markings on a table - the words round a blackjack layout, bet boxes,
+the scrolls in its corners - are etchings: a shape lit as though it were part
+of the cloth, and an ordinary sprite under the cards.
+
+```ts
+import { etch, etchSvg } from 'felt';
+
+etch(board, { text: 'BLACKJACK PAYS 3 TO 2', font: DISPLAY_FONT, size: 13, arc: 420 }, { x: 240, y: 116 });
+etch(board, { shape: 'rect', width: 82, height: 106, radius: 10, dash: [6, 4] }, { x, y });
+etch(board, { path: CORNER, viewBox: [100, 100], width: 110, stroke: 1.6 }, { x: 58, y: 58, style: 'gilt' });
+await etchSvg(board, medallionSvg, { width: 86, height: 86 }, { x: 240, y: 640, style: 'embossed' });
+```
+
+- **Marks**: words (several lines, letter spacing, or bent round a circle
+  with `arc`), SVG path data in a viewBox (filled or stroked), outlines
+  (`rect`, `ellipse`, `line`, dashed), a whole SVG document or any image
+  (its opaque part is the shape), or your own Canvas 2D drawing.
+- **Styles**: `etched` (pressed in), `embossed` (raised), `printed` (ink
+  worn by the nap, in `color`) and `gilt`. The light is only black and white
+  over the shape, so one etching suits any felt - `board.setBackground()`
+  changes the cloth under it.
+- Same marks share one picture in the atlas. One mark is never painted bigger
+  than an atlas page: a mark the size of the table comes out a little softer
+  instead. Words in a font still loading are laid out again when it arrives.
+
+See the Etched felt demo.
+
 ## From phaser-card-engine
 
 The names were kept wherever the idea survived, so a port is mostly deleting

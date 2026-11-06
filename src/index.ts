@@ -53,6 +53,8 @@ export {
 export type { CardArtOptions, CourtCaches } from './art/card-art.js';
 export { courtTextureKey, renderCourt, renderCourts } from './art/court-art.js';
 export type { RenderCourtsOptions } from './art/court-art.js';
+export { Etching, etch, etchSvg, loadSvg } from './art/etch.js';
+export type { DrawMark, EtchOptions, EtchStyle, ImageMark, Mark, PathMark, ShapeMark, TextMark } from './art/etch.js';
 export { courtWorkerSupported, disposeCourtWorker } from './art/court-worker.js';
 
 export { flickCard, simulateFlick } from './play/flick.js';

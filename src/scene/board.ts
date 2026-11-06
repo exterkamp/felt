@@ -190,7 +190,7 @@ export class Board implements EngineMember {
   private destroyedFlag = false;
   private readonly handlers = new Map<string, Set<Handler>>();
   private readonly pointers = new Map<number, BoardPointer & { dragging?: Node; trail?: { t: number; x: number; y: number }[] }>();
-  private readonly background: [number, number, number, number];
+  private background: [number, number, number, number];
   private readonly resizeObserver?: ResizeObserver;
   private readonly cleanup: (() => void)[] = [];
   /** Frames drawn so far. */
@@ -344,6 +344,13 @@ export class Board implements EngineMember {
    */
   setFov(fov: number): this {
     this.distance = lensDistance(fov, this.height);
+    this.touch();
+    return this;
+  }
+
+  /** Changes the colour of the felt. */
+  setBackground(color: string | number): this {
+    this.background = cssToRgba(color);
     this.touch();
     return this;
   }

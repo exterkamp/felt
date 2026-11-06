@@ -101,7 +101,7 @@ console.log(`smoking ${host}`);
 await send('Page.navigate', { url: `${host}/` });
 await sleep(700);
 const tiles = JSON.parse(await evaluate(`JSON.stringify([...document.querySelectorAll('a.demo')].map(a => a.href))`));
-check(tiles.length === 16, `the home screen lists sixteen demos (${tiles.length})`);
+check(tiles.length === 17, `the home screen lists seventeen demos (${tiles.length})`);
 let reachable = 0;
 let wayBack = 0;
 let boards = 0;
@@ -657,6 +657,38 @@ check(walls.up.high > 12 && walls.up.over > 1.4 && walls.up.z === 0 && walls.up.
 // finishing as it is let go, and that is not the flick.
 check(walls.side.high === 0 && walls.side.afterWall > 10,
   `in 2D it stays on the felt and a corner hit sets it spinning off the wall (${walls.side.afterWall.toFixed(0)} degrees after the wall)`);
+// --- etched felt: words, outlines and art worked into the table ------------
+console.log('\netched felt');
+await open('etch.html', '__felt?.marks?.().length === 18');
+const etched = JSON.parse(await evaluate(`(async () => {
+  const f = __felt; const b = f.board;
+  const wait = (ms) => new Promise(r => setTimeout(r, ms));
+  /** How far the board's pixels in a box are from the plain felt, at most. */
+  const contrast = (x, y, w, h) => {
+    const c = b.snapshotCanvas(); const r = c.width / b.width;
+    const px = c.getContext('2d').getImageData(x * r, y * r, w * r, h * r).data;
+    const felt = c.getContext('2d').getImageData(4 * r, b.height / 2 * r, 1, 1).data;
+    let most = 0;
+    for (let i = 0; i < px.length; i += 4) most = Math.max(most, Math.abs(px[i] - felt[0]) + Math.abs(px[i + 1] - felt[1]) + Math.abs(px[i + 2] - felt[2]));
+    return most;
+  };
+  const styles = [];
+  for (let i = 0; i < 4; i++) {
+    const marks = f.marks();
+    styles.push({ style: f.style(), marks: marks.length, drawn: marks.every(m => m.region && m.width > 0 && m.height > 0),
+      under: marks.every(m => m.depth < 0 && !m.interactive),
+      title: contrast(b.width / 2 - 60, 60, 120, 30), rules: contrast(b.width / 2 - 60, 108, 120, 16),
+      corner: contrast(10, 10, 60, 60) });
+    document.querySelector('#style').click();
+    await wait(400);
+  }
+  return JSON.stringify({ styles, pages: b.atlas.pages.length });
+})()`));
+check(etched.styles.every(s => s.marks === 18 && s.drawn && s.under),
+  `every style etches all 18 marks, under the cards and out of the way of drags (${etched.styles.map(s => s.style).join(', ')})`);
+check(etched.styles.every(s => s.title > 120 && s.rules > 25 && s.corner > 25),
+  `and they show on the felt: the gilt title, the rules and the corner filigree (${etched.styles.map(s => `${s.title}/${s.rules}/${s.corner}`).join(' ')})`);
+check(etched.pages <= 2, `the whole table's etching fits the atlas in ${etched.pages} page(s)`);
 // --- magnetic stacks: flicked near its suit, it is drawn in -----------------
 console.log('\nmagnetic stacks');
 await open('magnets.html', '__felt?.deck?.().length === 52');
