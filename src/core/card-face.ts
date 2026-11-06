@@ -198,7 +198,7 @@ const FACES: Record<FaceStyle, FaceRatios> = {
     // column of a ten runs down the card a third of the way in, and anything
     // wider than this in the corner is printed on top of it. The widest rank
     // is "10", which is what the clearance was measured against.
-    indexFontSize: 8 / 60,
+    indexFontSize: 9 / 60,
     indexLeft: 3 / 60,
     indexGap: 0,
     // As tall as the rank's own box. Bigger than a printed card's, and
@@ -206,10 +206,10 @@ const FACES: Record<FaceStyle, FaceRatios> = {
     // covers 0.68 of its width where a club covers 0.86 - so a suit sized to
     // match the rank on paper reads as a shrunken spade on a quarter of the
     // deck. This is the size that stops it.
-    indexSuitSize: 8 / 60,
+    indexSuitSize: 9 / 60,
     stacked: true,
     corners: 2,
-    inkHalfHeight: 2.9 / 60,
+    inkHalfHeight: 3.26 / 60,
     inkTopMargin: 3.2 / 60,
     // Deep enough to clear the suit under the rank as well as the rank, which
     // is what a two-cornered card has to show before it can be read.
@@ -228,14 +228,14 @@ const FACES: Record<FaceStyle, FaceRatios> = {
     // reason is the index above it: a printed rank is roughly half the size
     // of this one, so a real corner is a narrow enough column to sit beside a
     // 0.70 panel and this one is not. Measured rather than reasoned - the
-    // widest court rank is Q at 0.75 of the font size, which puts the corner
-    // at 21.0 units in on a 60-unit card, and the frame has to start outside
-    // that.
+    // widest court rank is Q at 0.75 of the font size, the frame has to start
+    // outside where that corner ends, and "leaves the corners room beside the
+    // panel" in the spec is the measurement. A bigger index is a narrower panel.
     //
     // I tried 0.70 first, on the grounds that a real card's corner and frame
     // very nearly touch. They do - but "very nearly" there is a printed
     // hairline's worth, and here it came out as a rank sitting on the rule.
-    court: { cut: 'full', panel: 0.62 },
+    court: { cut: 'full', panel: 0.61 },
   },
   // The deck sold to people who cannot read a standard one across a table:
   // the same card with the corners at about twice the size. The pip field
@@ -244,15 +244,15 @@ const FACES: Record<FaceStyle, FaceRatios> = {
   jumbo: {
     // Half again as big as the standard index, which is about what the real
     // decks do. Every unit of it is paid for by the pips below.
-    indexFontSize: 11 / 60,
+    indexFontSize: 12.5 / 60,
     indexLeft: 2 / 60,
     indexGap: 0,
     // And a size up again from standard's, which is what makes this a jumbo
     // corner rather than a standard one set in a larger rank.
-    indexSuitSize: 11 / 60,
+    indexSuitSize: 12.5 / 60,
     stacked: true,
     corners: 2,
-    inkHalfHeight: 4.3 / 60,
+    inkHalfHeight: 4.89 / 60,
     inkTopMargin: 3.2 / 60,
     inkBottomMargin: 2.5 / 60,
     pipSize: 30 / 60,
@@ -265,10 +265,9 @@ const FACES: Record<FaceStyle, FaceRatios> = {
     // the rank ends, plus a pip's own half-height.
     pips: { size: 8.5 / 60, aceSize: 20 / 60, inset: 19.5 / 60, top: 26 / 60 },
     // A wider corner needs a narrower panel, and jumbo's is much wider: its Q
-    // reaches 18.5 units in where the standard face's reaches 21.0. The
-    // court gives way, which is the trade this deck exists to make and the
+    // reaches further in than the standard face's. The court gives way, which is the trade this deck exists to make and the
     // same one its pips already made.
-    court: { cut: 'full', panel: 0.56 },
+    court: { cut: 'full', panel: 0.535 },
   },
 };
 
