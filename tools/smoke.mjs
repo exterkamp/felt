@@ -657,38 +657,40 @@ check(walls.up.high > 12 && walls.up.over > 1.4 && walls.up.z === 0 && walls.up.
 // finishing as it is let go, and that is not the flick.
 check(walls.side.high === 0 && walls.side.afterWall > 10,
   `in 2D it stays on the felt and a corner hit sets it spinning off the wall (${walls.side.afterWall.toFixed(0)} degrees after the wall)`);
-// --- etched felt: words, outlines and art worked into the table ------------
-console.log('\netched felt');
-await open('etch.html', '__felt?.marks?.().length === 18');
-const etched = JSON.parse(await evaluate(`(async () => {
+// --- painted tables: casino layouts painted on the felt --------------------
+console.log('\npainted tables');
+await open('tables.html', '__felt?.marks?.().length > 10');
+const painted = JSON.parse(await evaluate(`(async () => {
   const f = __felt; const b = f.board;
   const wait = (ms) => new Promise(r => setTimeout(r, ms));
-  /** How far the board's pixels in a box are from the plain felt, at most. */
-  const contrast = (x, y, w, h) => {
+  /** How many pixels in a box are near a colour. */
+  const near = (x, y, w, h, [R, G, B]) => {
     const c = b.snapshotCanvas(); const r = c.width / b.width;
     const px = c.getContext('2d').getImageData(x * r, y * r, w * r, h * r).data;
-    const felt = c.getContext('2d').getImageData(4 * r, b.height / 2 * r, 1, 1).data;
-    let most = 0;
-    for (let i = 0; i < px.length; i += 4) most = Math.max(most, Math.abs(px[i] - felt[0]) + Math.abs(px[i + 1] - felt[1]) + Math.abs(px[i + 2] - felt[2]));
-    return most;
+    let n = 0;
+    for (let i = 0; i < px.length; i += 4) if (Math.abs(px[i] - R) + Math.abs(px[i + 1] - G) + Math.abs(px[i + 2] - B) < 90) n++;
+    return n;
   };
-  const styles = [];
-  for (let i = 0; i < 4; i++) {
+  const out = {};
+  for (const name of ['blackjack', 'baccarat', 'craps']) {
+    f.show(name);
+    await wait(1500);
     const marks = f.marks();
-    styles.push({ style: f.style(), marks: marks.length, drawn: marks.every(m => m.region && m.width > 0 && m.height > 0),
-      under: marks.every(m => m.depth < 0 && !m.interactive),
-      title: contrast(b.width / 2 - 60, 60, 120, 30), rules: contrast(b.width / 2 - 60, 108, 120, 16),
-      corner: contrast(10, 10, 60, 60) });
-    document.querySelector('#style').click();
-    await wait(400);
+    out[name] = { marks: marks.length, drawn: marks.every(m => m.region && m.width > 0 && m.height > 0),
+      under: marks.every(m => m.depth < 0 && !m.interactive), cards: f.table().cards.length, pages: b.atlas.pages.length };
   }
-  return JSON.stringify({ styles, pages: b.atlas.pages.length });
+  // Craps: COME is red, the point numbers yellow, the pass line white.
+  out.paint = { red: near(140, 175, 200, 40, [210, 48, 44]), yellow: near(90, 75, 360, 30, [242, 194, 48]),
+    white: near(140, 405, 200, 30, [243, 239, 226]) };
+  return JSON.stringify(out);
 })()`));
-check(etched.styles.every(s => s.marks === 18 && s.drawn && s.under),
-  `every style etches all 18 marks, under the cards and out of the way of drags (${etched.styles.map(s => s.style).join(', ')})`);
-check(etched.styles.every(s => s.title > 120 && s.rules > 25 && s.corner > 25),
-  `and they show on the felt: the gilt title, the rules and the corner filigree (${etched.styles.map(s => `${s.title}/${s.rules}/${s.corner}`).join(' ')})`);
-check(etched.pages <= 2, `the whole table's etching fits the atlas in ${etched.pages} page(s)`);
+check(['blackjack', 'baccarat', 'craps'].every(n => painted[n].drawn && painted[n].under && painted[n].marks > 15),
+  `blackjack, baccarat and craps are painted, under the cards and out of the way of drags (${['blackjack', 'baccarat', 'craps'].map(n => painted[n].marks).join(', ')} marks)`);
+check(painted.blackjack.cards === 52 && painted.baccarat.cards === 52, 'and the card tables deal onto their layouts');
+check(painted.paint.red > 200 && painted.paint.yellow > 200 && painted.paint.white > 200,
+  `the paint is the colour asked for: red, yellow and white on the craps layout (${painted.paint.red}/${painted.paint.yellow}/${painted.paint.white} px)`);
+check(Math.max(...['blackjack', 'baccarat', 'craps'].map(n => painted[n].pages)) <= 3,
+  `and every layout fits the atlas in ${Math.max(...['blackjack', 'baccarat', 'craps'].map(n => painted[n].pages))} page(s)`);
 // --- magnetic stacks: flicked near its suit, it is drawn in -----------------
 console.log('\nmagnetic stacks');
 await open('magnets.html', '__felt?.deck?.().length === 52');

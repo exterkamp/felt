@@ -1,32 +1,35 @@
 import type { Board } from '../scene/board.js';
 import { Sprite, type SpriteOptions } from '../scene/sprite.js';
 
-// Marks on the felt itself: the words printed round a blackjack table, the
-// box a bet goes in, the scrolls in its corners. Each is painted once with
-// Canvas 2D, as a shape, and that shape is then lit as though it were part
-// of the cloth - pressed into it, raised out of it, printed on it in ink, or
-// laid on it in gold. What comes back is an ordinary sprite: it sorts under
-// the cards, costs one instance a frame, and can be moved, faded or removed.
-//
-// The light is only ever black and white over the shape, so an etching takes
-// the colour of whatever felt it is on, and needs telling nothing about it.
+// Paint on the felt itself: the words round a blackjack layout, the boxes
+// bets go in, a craps table's numbers, the scrolls in a corner. Each mark is
+// drawn once with Canvas 2D as a shape and filled with one colour of paint -
+// worn a little by the nap of the cloth - and what comes back is an ordinary
+// sprite: it sorts under the cards, costs one instance a frame, and can be
+// moved, faded or removed.
 
-export type EtchStyle = 'etched' | 'embossed' | 'printed' | 'gilt';
+/** The paints a casino layout is printed in. Any CSS colour will do as well. */
+export const FELT_INKS = {
+  white: '#f3efe2',
+  cream: '#e9dcb4',
+  yellow: '#f2c230',
+  gold: '#d4a93c',
+  red: '#d2302c',
+  black: '#141414',
+  blue: '#2a63b8',
+  green: '#2f8f4e',
+} as const;
 
-export interface EtchOptions extends Omit<SpriteOptions, 'width' | 'height' | 'tint'> {
+export type FeltInk = keyof typeof FELT_INKS;
+
+export interface FeltPaintOptions extends Omit<SpriteOptions, 'width' | 'height' | 'tint'> {
   /**
-   * How it is lit. `etched` (the default) is pressed into the felt: darker,
-   * with a shadow inside its top edge and light along its bottom one.
-   * `embossed` stands up out of it. `printed` is flat ink in `color`, worn
-   * by the nap of the cloth. `gilt` is gold leaf.
+   * The paint: one of `FELT_INKS` by name, or any CSS colour. Default white.
+   * An image, an SVG document or a drawing given no colour keeps its own.
    */
-  style?: EtchStyle;
-  /** The ink of a printed etching. Default a pale felt green. */
-  color?: string;
-  /** How far the light and shadow reach, in board units. Default 1. */
-  relief?: number;
-  /** 0-1: how strongly it shows. Default 1. */
-  strength?: number;
+  color?: FeltInk | (string & {});
+  /** 0-1: how worn by the nap of the cloth it is. Default 0.25. */
+  wear?: number;
 }
 
 /** Words. One line, or several split by `\n`, or one bent round a circle. */
@@ -46,6 +49,8 @@ export interface TextMark {
    * they run round its bottom, the right way up.
    */
   arc?: number;
+  /** Outlined letters, a line this wide, rather than solid ones. */
+  stroke?: number;
 }
 
 /** SVG path data - one path or several - drawn from a viewBox. */
@@ -81,7 +86,7 @@ export interface ImageMark {
   key?: string;
 }
 
-/** Anything else: draw it in board units, in any colour; its shape is used. */
+/** Anything else: draw it in board units. In its own colours, or its shape in `color`. */
 export interface DrawMark {
   draw(pen: CanvasRenderingContext2D, width: number, height: number): void;
   width: number;
@@ -91,33 +96,34 @@ export interface DrawMark {
 
 export type Mark = TextMark | PathMark | ShapeMark | ImageMark | DrawMark;
 
-/** The board sprite an etching is. Under the cards unless given a depth. */
-export class Etching extends Sprite {}
+/** The board sprite a mark of paint is. Under the cards unless given a depth. */
+export class FeltPaint extends Sprite {}
 
 /**
- * Etches a mark into a board's felt.
+ * Paints a mark onto a board's felt.
  *
- *     etch(board, { text: 'DEALER STANDS ON 17', arc: 300 }, { x: 240, y: 200 });
- *     etch(board, { shape: 'rect', width: 80, height: 110, radius: 8 }, { x, y });
- *     etch(board, { path: SCROLL, viewBox: [64, 64], width: 40 }, { style: 'gilt' });
+ *     paintFelt(board, { text: 'DEALER STANDS ON 17', arc: 300 }, { x: 240, y: 200, color: 'yellow' });
+ *     paintFelt(board, { shape: 'rect', width: 80, height: 110, radius: 8 }, { x, y });
+ *     paintFelt(board, { path: SCROLL, viewBox: [64, 64], width: 40, stroke: 1.5 }, { color: 'gold' });
  */
-export function etch(board: Board, mark: Mark, options: EtchOptions = {}): Etching {
-  const { style = 'etched', color = '#cfead0', relief = 1, strength = 1, ...place } = options;
-  const look = { style, color, relief, strength };
-  const sprite = new Etching(board, undefined, { depth: -1, ...place }, true);
+export function paintFelt(board: Board, mark: Mark, options: FeltPaintOptions = {}): FeltPaint {
+  const { color, wear = 0.25, ...place } = options;
+  const ink = color === undefined ? ('image' in mark || 'draw' in mark ? undefined : FELT_INKS.white)
+    : (FELT_INKS as Record<string, string>)[color] ?? color;
+  const sprite = new FeltPaint(board, undefined, { depth: -1, ...place }, true);
   const font = 'text' in mark ? fontOf(mark) : undefined;
   const fonts = typeof document !== 'undefined' ? document.fonts : undefined;
   const make = () => {
     const shape = layout(mark);
-    const pad = Math.ceil(relief * 2 + 1);
+    const pad = 2;
     const width = shape.width + pad * 2;
     const height = shape.height + pad * 2;
     // Never larger than a page of the atlas: a mark the size of the table is
     // painted a little softer rather than not at all.
     const ratio = Math.min(board.pixelRatio, (board.atlas.size - 8) / Math.max(width, height));
-    const key = `etch:${keyOf(mark)}:${JSON.stringify(look)}:${ratio}:${font && fonts ? fonts.check(font) : ''}`;
+    const key = `felt:${keyOf(mark)}:${ink}:${wear}:${ratio}:${font && fonts ? fonts.check(font) : ''}`;
     const region = board.atlas.obtain(key, Math.ceil(width * ratio), Math.ceil(height * ratio),
-      (pen, w, h) => light(pen as CanvasRenderingContext2D, w, h, look, ratio, (mask) => {
+      (pen, w, h) => fill(pen as CanvasRenderingContext2D, w, h, ink, wear, (mask) => {
         mask.scale(ratio, ratio);
         mask.translate(pad, pad);
         shape.draw(mask);
@@ -125,6 +131,10 @@ export function etch(board: Board, mark: Mark, options: EtchOptions = {}): Etchi
     const old = sprite.region;
     sprite.region = region;
     sprite.setDisplaySize(width, height);
+    // Words are placed by the middle of their line, wherever it bends.
+    if (shape.anchor && place.originX === undefined && place.originY === undefined) {
+      sprite.setOrigin((pad + shape.anchor.x) / width, (pad + shape.anchor.y) / height);
+    }
     board.atlas.release(old);
   };
   make();
@@ -149,11 +159,14 @@ export async function loadSvg(markup: string): Promise<HTMLImageElement> {
   }
 }
 
-/** Etches a whole SVG document, once it has loaded. Its shape is what it covers. */
-export async function etchSvg(board: Board, markup: string,
-  mark: { width: number; height: number }, options: EtchOptions = {}): Promise<Etching> {
+/**
+ * Paints a whole SVG document, once it has loaded: in its own colours, or
+ * all in `color` if one is given.
+ */
+export async function paintFeltSvg(board: Board, markup: string,
+  mark: { width: number; height: number }, options: FeltPaintOptions = {}): Promise<FeltPaint> {
   const image = await loadSvg(markup);
-  return etch(board, { image, ...mark, key: `svg-${hashOf(markup)}` }, options);
+  return paintFelt(board, { image, ...mark, key: `svg-${hashOf(markup)}` }, options);
 }
 
 // --- shapes --------------------------------------------------------------
@@ -161,6 +174,8 @@ export async function etchSvg(board: Board, markup: string,
 interface Shape {
   width: number;
   height: number;
+  /** The point its x, y names, from its top-left, if not its middle. */
+  anchor?: { x: number; y: number };
   /** Draws it, opaque, in board units, from its top-left. */
   draw(pen: CanvasRenderingContext2D): void;
 }
@@ -282,24 +297,25 @@ function words(mark: TextMark): Shape {
   return {
     width: maxX - minX,
     height: maxY - minY,
+    anchor: { x: -minX, y: -minY },
     draw(pen) {
       pen.font = font;
+      pen.lineWidth = mark.stroke ?? 0;
+      pen.lineJoin = 'round';
       pen.textAlign = 'center';
       pen.textBaseline = 'middle';
       for (const g of glyphs) {
         pen.save();
         pen.translate(g.x - minX, g.y - minY);
         pen.rotate(g.angle);
-        pen.fillText(g.ch, 0, 0);
+        if (mark.stroke) pen.strokeText(g.ch, 0, 0); else pen.fillText(g.ch, 0, 0);
         pen.restore();
       }
     },
   };
 }
 
-// --- light ---------------------------------------------------------------
-
-type Look = Required<Pick<EtchOptions, 'style' | 'color' | 'relief' | 'strength'>>;
+// --- paint ---------------------------------------------------------------
 
 function scratch(width: number, height: number): HTMLCanvasElement | OffscreenCanvas {
   if (typeof document !== 'undefined') {
@@ -312,85 +328,33 @@ function scratch(width: number, height: number): HTMLCanvasElement | OffscreenCa
 }
 
 /**
- * Paints the shape lit as `look` says. The shape is drawn once into a mask;
- * the light is copies of the mask in one colour each, offset a little up or
- * down, some with the mask cut out of them - which leaves just the lip of
- * one edge.
+ * Draws the shape, fills it with the ink (or keeps its own colours), and
+ * wears it: a scatter of specks of felt showing through, always the same
+ * for one size so a repaint matches.
  */
-function light(pen: CanvasRenderingContext2D, w: number, h: number, look: Look, ratio: number,
-  drawMask: (mask: CanvasRenderingContext2D) => void): void {
-  const mask = scratch(w, h);
-  const m = mask.getContext('2d') as CanvasRenderingContext2D;
-  m.fillStyle = m.strokeStyle = '#000';
-  drawMask(m);
-  const d = Math.max(1, look.relief * ratio);
-  const s = look.strength;
-
-  /** The mask in one fill. */
-  const tinted = (fill: string | ((pen: CanvasRenderingContext2D) => CanvasGradient)) => {
-    const out = scratch(w, h);
-    const o = out.getContext('2d') as CanvasRenderingContext2D;
-    o.drawImage(mask, 0, 0);
+function fill(pen: CanvasRenderingContext2D, w: number, h: number, ink: string | undefined, wear: number,
+  draw: (mask: CanvasRenderingContext2D) => void): void {
+  const out = scratch(w, h);
+  const o = out.getContext('2d') as CanvasRenderingContext2D;
+  o.fillStyle = o.strokeStyle = '#000';
+  draw(o);
+  o.setTransform(1, 0, 0, 1, 0, 0);
+  if (ink) {
     o.globalCompositeOperation = 'source-in';
-    o.fillStyle = typeof fill === 'string' ? fill : fill(o);
+    o.fillStyle = ink;
     o.fillRect(0, 0, w, h);
-    return out;
-  };
-  /** The mask's top edge, `d` deep: the mask less itself moved down. */
-  const topLip = (fill: string) => {
-    const out = tinted(fill);
-    const o = out.getContext('2d') as CanvasRenderingContext2D;
+  }
+  if (wear > 0) {
     o.globalCompositeOperation = 'destination-out';
-    o.drawImage(mask, 0, d);
-    return out;
-  };
-  const put = (image: CanvasImageSource, alpha: number, dy = 0) => {
-    pen.globalAlpha = Math.min(1, alpha * s);
-    pen.drawImage(image, 0, dy);
-  };
-
-  switch (look.style) {
-    case 'etched':
-      put(tinted('#fff'), 0.16, d);
-      put(tinted('#000'), 0.36);
-      put(topLip('#000'), 0.5);
-      break;
-    case 'embossed':
-      put(tinted('#000'), 0.34, d);
-      put(tinted('#fff'), 0.08);
-      put(topLip('#fff'), 0.26);
-      break;
-    case 'printed': {
-      const ink = tinted(look.color);
-      // Worn by the nap: a few specks of felt show through the ink.
-      const o = ink.getContext('2d') as CanvasRenderingContext2D;
-      o.globalCompositeOperation = 'destination-out';
-      o.fillStyle = '#000';
-      let seed = 7;
-      const next = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-      for (let i = 0, n = (w * h) / 9; i < n; i++) {
-        o.globalAlpha = next() * 0.5;
-        o.fillRect(next() * w, next() * h, 1, 1);
-      }
-      put(ink, 0.82);
-      break;
-    }
-    case 'gilt': {
-      const gold = (o: CanvasRenderingContext2D) => {
-        const g = o.createLinearGradient(0, 0, 0, h);
-        g.addColorStop(0, '#f7e7a1');
-        g.addColorStop(0.45, '#d4af37');
-        g.addColorStop(0.55, '#a8842a');
-        g.addColorStop(1, '#ecd27a');
-        return g;
-      };
-      put(tinted('#000'), 0.4, d);
-      put(tinted(gold), 1);
-      put(topLip('#fffbe6'), 0.55);
-      break;
+    o.fillStyle = '#000';
+    let seed = 7;
+    const next = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    for (let i = 0, n = (w * h) / 6; i < n; i++) {
+      o.globalAlpha = next() * wear;
+      o.fillRect(next() * w, next() * h, 1, 1);
     }
   }
-  pen.globalAlpha = 1;
+  pen.drawImage(out, 0, 0);
 }
 
 // --- keys ----------------------------------------------------------------

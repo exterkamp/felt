@@ -49,7 +49,7 @@ export default defineConfig({
         stress: resolve(__dirname, 'demo/stress.html'),
         flick: resolve(__dirname, 'demo/flick.html'),
         magnets: resolve(__dirname, 'demo/magnets.html'),
-        etch: resolve(__dirname, 'demo/etch.html'),
+        tables: resolve(__dirname, 'demo/tables.html'),
         tour: resolve(__dirname, 'demo/tour.html'),
         solitaire: resolve(__dirname, 'demo/solitaire.html'),
         stacks: resolve(__dirname, 'demo/stacks.html'),

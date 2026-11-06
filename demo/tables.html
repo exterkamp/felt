@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>felt — etched felt</title>
+    <title>felt — painted tables</title>
     <style>
       @font-face {
         font-family: 'Cinzel';
@@ -54,26 +54,27 @@
       label { font-size: 0.72rem; display: flex; align-items: center; gap: 0.35rem; color: #9fc4a4; }
       input[type=range] { width: 7rem; accent-color: #ffd166; }
       label code { font-size: 0.68rem; color: #cfead0; font-family: ui-monospace, monospace; min-width: 2.2rem; }
+      button.on { border-color: #ffd166; color: #ffd166; }
       #score { font-family: ui-monospace, monospace; font-size: 0.72rem; color: #cfead0; text-align: center; }
     </style>
   </head>
   <body>
     <a class="home" href="./">&larr; Demos</a>
-    <h1>Etched felt</h1>
+    <h1>Painted tables</h1>
     <p>
-      Words, outlines and artwork worked into the cloth: a title in gold leaf,
-      the rules pressed in round the table, bet boxes, filigree in the corners
-      and an SVG medallion. Each is one <code>etch()</code> call and an ordinary
-      sprite under the cards - and the light is only shadow and highlight, so
-      it takes on whatever felt it is on. Try the styles and the colours; drag
-      the cards about over it.
+      Blackjack, baccarat and craps layouts, painted on the felt: every word,
+      line, box, die and scroll is a <code>paintFelt</code> mark in one of the
+      table paints - white, cream, yellow, gold, red, black, blue, green - or
+      any colour, and an ordinary sprite under the cards. Drag the cards about
+      over it.
     </p>
     <div id="board"></div>
-    <div class="row">
-      <button id="style">Style: etched</button>
-      <button id="felt">Felt: green</button>
+    <div class="row tables">
+      <button id="blackjack">Blackjack</button>
+      <button id="baccarat">Baccarat</button>
+      <button id="craps">Craps</button>
       <button id="deal">Deal</button>
     </div>
-    <script type="module" src="./etch.ts"></script>
+    <script type="module" src="./tables.ts"></script>
   </body>
 </html>
