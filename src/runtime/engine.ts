@@ -101,6 +101,16 @@ export class Engine {
     if (this.lifecycle) this.scope.add(this.lifecycle.on((event) => this.onLifecycle(event)));
   }
 
+  /** How many members (boards) it is stepping. */
+  get memberCount(): number {
+    return this.members.size;
+  }
+
+  /** How many per-frame callbacks are subscribed: timers, scene updates. */
+  get updateCount(): number {
+    return this.updates.size;
+  }
+
   get suspended(): boolean {
     return this.suspendedFlag;
   }

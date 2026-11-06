@@ -1,4 +1,4 @@
-import { Board, CARD_HEIGHT, CARD_WIDTH, DISPLAY_FONT, Sprite, animatorOf, fpsMeter } from 'felt';
+import { Board, CARD_HEIGHT, CARD_WIDTH, DISPLAY_FONT, Director, Scene, Sprite, animatorOf, fpsMeter } from 'felt';
 
 // The two things every demo page prints on its felt: the outline of an empty
 // pile, and a small label. One picture each, shared by every sprite using it.
@@ -28,4 +28,15 @@ export function expose(handle: Record<string, unknown> & { board?: Board }): voi
     ...handle, ...(handle.board ? { animator: animatorOf(handle.board) } : {}),
   };
   if (handle.board) fpsMeter(handle.board);
+}
+
+/**
+ * Runs a demo's scene as the whole page, when the page is that demo's own.
+ * Inside the demo app the app adds the scene to its director instead, and
+ * this does nothing: the app says so before it imports any scene.
+ */
+export function standalone(scene: Scene<never>): void {
+  if ((window as unknown as { __feltApp?: unknown }).__feltApp) return;
+  const director = new Director(document.body, [scene]);
+  void director.go(scene.name);
 }

@@ -522,6 +522,54 @@ check(thrown.count === 2 && thrown.down, 'and comes down onto the pile it was th
 check(thrown.angled, 'a messy pile takes it at its own crooked angle');
 
 console.log('');
+// --- the demo as one page: scenes, not navigations --------------------------
+console.log('\nthe demo app');
+await send('Page.navigate', { url: `${host}/` });
+await until('!!window.__feltApp?.director?.scene');
+const spa = JSON.parse(await evaluate(`(async () => {
+  const app = window.__feltApp; const wait = (ms) => new Promise(r => setTimeout(r, ms));
+  const names = [...document.querySelectorAll('a.demo')].map(a => a.getAttribute('href').replace('./', '').replace('.html', ''));
+  const loadsBefore = performance.getEntriesByType('navigation').length;
+  const visits = []; let leftovers = 0;
+  for (const name of names) {
+    document.querySelector('a.demo[href="./' + name + '.html"]').click();
+    const t = performance.now();
+    const live = () => app.director.scene === name && window.__felt?.board && !window.__felt.board.isDestroyed
+      && (window.__felt.board.renderer.instanceCount > 0 || window.__felt.board.renderer.drawCalls > 0);
+    while (!live() && performance.now() - t < 8000) await wait(50);
+    visits.push({ name, scene: app.director.scene, canvases: document.querySelectorAll('canvas').length,
+      members: app.engine.memberCount, drawn: (window.__felt?.board?.renderer?.instanceCount ?? 0) + (window.__felt?.board?.renderer?.drawCalls ?? 0), hash: location.hash });
+    await wait(300);
+    document.querySelector('a.home').click();
+    const back = performance.now();
+    while (!(app.director.scene === 'index' && document.querySelector('a.demo')) && performance.now() - back < 5000) await wait(20);
+    await wait(150);
+    if (document.querySelectorAll('canvas').length || app.engine.memberCount || app.engine.updateCount
+      || document.querySelector('.felt-fps')) leftovers++;
+  }
+  // Again, warm: the art is the engine's from the first visit.
+  const art = app.engine.services.get('art-store'); const known = art.report().length;
+  document.querySelector('a.demo[href="./stacks.html"]').click();
+  const t = performance.now();
+  while (!(app.director.scene === 'stacks' && !window.__felt.board.isDestroyed
+    && window.__felt.board.renderer.instanceCount > 70) && performance.now() - t < 8000) await wait(10);
+  const warm = performance.now() - t;
+  // The back button, through the hash.
+  history.back(); await wait(500);
+  const afterBack = app.director.scene;
+  history.forward(); await wait(1200);
+  return JSON.stringify({ visits, leftovers, warm, newArt: art.report().length - known, afterBack,
+    afterForward: app.director.scene, navigations: performance.getEntriesByType('navigation').length - loadsBefore,
+    sameDocument: !!window.__feltApp });
+})()`));
+const opened = spa.visits.filter(v => v.scene === v.name && v.canvases === 1 && v.members === 1 && v.drawn > 0 && v.hash === '#/' + v.name);
+if (opened.length !== spa.visits.length) console.log(JSON.stringify(spa.visits.filter(v => !opened.includes(v))));
+check(opened.length === spa.visits.length, `every demo opens as a scene in one page, with its board drawing (${opened.length}/${spa.visits.length})`);
+check(spa.leftovers === 0, `leaving a scene leaves nothing behind: no canvas, board, timer or meter (${spa.leftovers} left something)`);
+check(spa.sameDocument && spa.navigations === 0, 'and the page never navigated');
+check(spa.newArt === 0, `a demo visited again fetches no art again, and draws in ${Math.round(spa.warm)} ms`);
+check(spa.afterBack === 'index' && spa.afterForward === 'stacks', `back and forward move between scenes (${spa.afterBack}, ${spa.afterForward})`);
+
 check(errors.length === 0, `no page threw (${errors.length}${errors.length ? `: ${errors.slice(0, 3).join(' | ')}` : ''})`);
 console.log(failures ? `\n${failures} failed` : '\nall good');
 done(failures ? 1 : 0);

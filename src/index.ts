@@ -22,6 +22,8 @@ export type { Clock } from './runtime/clock.js';
 export { Disposables } from './runtime/disposables.js';
 export type { Dispose } from './runtime/disposables.js';
 export { PageLifecycle } from './runtime/lifecycle.js';
+export { Director, defineScene } from './runtime/scene.js';
+export type { DirectorOptions, GoOptions, Scene, SceneContext } from './runtime/scene.js';
 export type { LifecycleEvent, LifecycleHost } from './runtime/lifecycle.js';
 export { CONTEXT_RESTORE_WAIT_MS } from './scene/board.js';
 export type { FpsMeter } from './scene/fps.js';
