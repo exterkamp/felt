@@ -17,7 +17,10 @@ Rules (see docs/runtime.md): nothing in module state but constants and the one
 `engine()`. Page-wide things are engine services; per-context things are board
 services. Anything a scene starts goes through its context so it is undone
 when the scene ends. No raw `setTimeout` or `requestAnimationFrame` in demos.
-Every demo is a scene (`defineScene` + `standalone(scene)`).
+Every demo is a scene (`defineScene` + `standalone(scene)`), calls
+`showCode(ctx)`, and wraps the code its feature is in with `// #region Title`
+/ `// #endregion` - the Code panel (`demo/code.ts`) shows those regions from
+the demo's own source, so keep them on the code that matters.
 
 The projection is written twice — `src/gl/lens.ts` and `PROJECT` in
 `src/gl/shaders.ts` — and picking/`deckCentre` depend on them agreeing.

@@ -2,6 +2,7 @@ import './serve';
 import {
   CARD_WIDTH, Card, CardSprite, DEFAULT_DECK_THEME, RIFFLE_HAND_DEPTH, Stack, defineStack, loadCardArt, orderStack, riffleShuffle, shuffledDeck,
 } from 'felt';
+import { showCode } from './code';
 import { expose, standalone } from './kit';
 import { defineScene } from 'felt';
 
@@ -10,6 +11,7 @@ import { defineScene } from 'felt';
 export const scene = defineScene({
   name: 'shuffle',
   create(ctx) {
+    showCode(ctx);
     // A riffle, on its own and slow enough to watch.
     //
     // The cards are the cards: nothing is swapped for a mesh while they bend, so
@@ -31,6 +33,7 @@ export const scene = defineScene({
       stills: () => ({ peak: bench.peak?.toDataURL() ?? '', late: bench.late?.toDataURL() ?? '' }),
     };
 
+    // #region A squared deck
     function lay(): void {
       for (const card of cards) card.destroy();
       cards = shuffledDeck().map((card: Card) => {
@@ -41,6 +44,7 @@ export const scene = defineScene({
       orderStack(cards, DECK);
       say(`${cards.length} cards, squared.`);
     }
+    // #endregion
 
     async function go(rounds: number, slow = 1): Promise<void> {
       if (busy) return;
@@ -82,9 +86,11 @@ export const scene = defineScene({
         }
         if (apart >= spread && deep >= bow * 0.9 && deep > 0) bench.peak = still() ?? bench.peak;
       };
+      // #region Riffling, watched from the board's own loop
       board.on('update', watch);
       await riffleShuffle(board, cards, DECK, { rounds, duration: 240 * slow, stagger: 11 * slow });
       board.off('update', watch);
+      // #endregion
       bench.seen = { bent, spread: Math.round(spread), bow: Number(bow.toFixed(2)), over };
       const kept = cards.map((c) => c.card.id).join() === before;
       say(`${rounds} riffle${rounds > 1 ? 's' : ''} in ${Math.round(performance.now() - started)}ms — `

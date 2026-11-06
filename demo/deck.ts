@@ -22,6 +22,7 @@ import {
   stackPositions,
   Board, CardSprite, Node, orderStack, loadCardArt, renderCourt, suitTexture,
 } from 'felt';
+import { showCode } from './code';
 import { expose, standalone } from './kit';
 import { defineScene } from 'felt';
 
@@ -30,6 +31,7 @@ import { defineScene } from 'felt';
 export const scene = defineScene({
   name: 'deck',
   create(ctx) {
+    showCode(ctx);
     // A deck editor.
     //
     // Every color this package lets a game set, in one place, over a deck you can
@@ -65,6 +67,7 @@ export const scene = defineScene({
       court: CourtPalette;
     }
 
+    // #region A whole deck theme, as values
     /**
      * One of the six, as every value on this page.
      *
@@ -89,6 +92,7 @@ export const scene = defineScene({
         },
       };
     }
+    // #endregion
 
     function defaults(): Editable {
       return themeDeck('press');
@@ -202,6 +206,7 @@ export const scene = defineScene({
 
       // --- the board ----------------------------------------------------------
 
+      // #region Rebuilding every card
       /**
        * Every card, from scratch.
        *
@@ -228,6 +233,7 @@ export const scene = defineScene({
         SUITS.forEach((suit, i) => this.column(i + 1, { suit, rank }));
         this.caption(rank);
       }
+      // #endregion
 
       /**
        * One pile. The first column is the deck, face down; the rest are a suit
@@ -244,6 +250,7 @@ export const scene = defineScene({
           const card: Card = top && face
             ? { rank: face.rank, suit: face.suit, id: `${face.suit}-${face.rank}`, faceUp: true }
             : { rank: 'A', suit: 'spades', id: `under-${index}-${depth}`, faceUp: false };
+          // #region A card with its own stock, inks, back and court
           const sprite = new CardSprite(this.board, card, {
             width: CARD_W,
             paper: this.deck.paper,
@@ -253,6 +260,7 @@ export const scene = defineScene({
             courtPalette: this.court(),
             courtWidth: COURT_RASTER,
           });
+          // #endregion
           sprite.setPosition(place.x, place.y);
           this.root.push(sprite);
           sprites.push(sprite);
@@ -296,6 +304,7 @@ export const scene = defineScene({
         return { ...this.deck.court, paper: colorCss(this.deck.paper) };
       }
 
+      // #region What each suit is printed in
       /** What each suit is printed in. Not what any of them counts as. */
       private ink(): Record<string, number> {
         return {
@@ -303,6 +312,7 @@ export const scene = defineScene({
           spades: this.deck.blackInk, clubs: this.deck.blackInk,
         };
       }
+      // #endregion
 
       // --- controls -----------------------------------------------------------
 

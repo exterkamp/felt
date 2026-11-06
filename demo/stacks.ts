@@ -5,6 +5,7 @@ import {
   defineStack, loadCardArt, nextPosition, orderStack, renderCourts, seeded, shuffle,
   stackPositions, stackUnder, topCardIndex, Card,
 } from 'felt';
+import { showCode } from './code';
 import { expose, standalone } from './kit';
 import { defineScene } from 'felt';
 
@@ -13,6 +14,7 @@ import { defineScene } from 'felt';
 export const scene = defineScene({
   name: 'stacks',
   create(ctx) {
+    showCode(ctx);
     // A board made of nothing but stacks.
     //
     // One of every direction a pile can run, each twice - newest card in front and
@@ -86,12 +88,14 @@ export const scene = defineScene({
 
     function buildStacks(): void {
       const kept = new Map(piles.map((p) => [p.stack.id, p.cards]));
+      // #region Every way a stack can run
       const pair = (fan: FanDirection, step: number, cap: number,
         places: Record<StackOrder, { x: number; y: number }>): Stack[] =>
         (['last-on-top', 'first-on-top'] as StackOrder[]).map((order) => defineStack({
           id: `${fan}-${order}`, ...places[order], fan, step,
           maxSpread: squeezed ? cap : 0, messy, order,
         }));
+      // #endregion
       const stacks: Stack[] = [
         ...pair('none', 0, 0, {
           'last-on-top': { x: centre(0), y: TOP_ROW }, 'first-on-top': { x: centre(1), y: TOP_ROW },
@@ -180,6 +184,7 @@ export const scene = defineScene({
       return piles.find((p) => p.stack.id === id);
     }
 
+    // #region Laying a pile out
     function layOut(p: Pile): void {
       const at = stackPositions(p.stack, p.cards.length);
       p.cards.forEach((view, i) => {
@@ -190,16 +195,20 @@ export const scene = defineScene({
       // board sorts by depth itself: nothing else to call.
       orderStack(p.cards, p.stack, piles.indexOf(p) * 100);
     }
+    // #endregion
 
     function layOutAll(): void {
       for (const p of piles) layOut(p);
     }
 
+    // #region Which stack a dragged card is over
     function targetFor(view: CardSprite): Stack | undefined {
       return stackUnder(cardRect({ x: view.x, y: view.y }),
         piles.filter((p) => !p.cards.includes(view)).map((p) => ({ stack: p.stack, count: p.cards.length })));
     }
+    // #endregion
 
+    // #region Dragging from pile to pile
     board.on('dragstart', (pointer, node) => {
       const view = node as CardSprite;
       const from = piles.find((p) => p.cards.includes(view));
@@ -213,6 +222,7 @@ export const scene = defineScene({
       dragging = { view, from };
       view.depth = HELD_DEPTH;
     });
+    // #endregion
 
     board.on('drag', (pointer) => {
       if (!dragging) return;

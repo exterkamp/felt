@@ -3,6 +3,7 @@ import {
   CardSprite, COURT_PALETTES, DEFAULT_DECK_THEME, Card, Stack, buildDeck, cardRect, dealCards, defineStack, flightDuration, loadCardArt, orderStack, renderCourts, seeded, shuffle,
   stackPositions, stackUnder, throwCard, CARD_HEIGHT,
 } from 'felt';
+import { showCode } from './code';
 import { expose, label, slot, standalone } from './kit';
 import { defineScene } from 'felt';
 
@@ -11,6 +12,7 @@ import { defineScene } from 'felt';
 export const scene = defineScene({
   name: 'throws',
   create(ctx) {
+    showCode(ctx);
     // Throwing cards at things.
     //
     // Two kinds of target, which is the whole point: a bare point on the felt,
@@ -69,6 +71,7 @@ export const scene = defineScene({
       return card;
     }
 
+    // #region Throwing at a point
     async function throwAtPoint(at: { x: number; y: number }): Promise<void> {
       const card = take();
       if (!card) return;
@@ -80,7 +83,9 @@ export const scene = defineScene({
       });
       report(`Thrown at a point: ${Math.round(at.x)}, ${Math.round(at.y)}.`);
     }
+    // #endregion
 
+    // #region Throwing at a stack
     async function throwAtPile(pile: Pile): Promise<void> {
       const card = take();
       if (!card) return;
@@ -90,7 +95,9 @@ export const scene = defineScene({
       layOut(pile);
       report(`Thrown onto ${pile.stack.id}, now ${pile.cards.length} cards.`);
     }
+    // #endregion
 
+    // #region Dealing five
     async function dealHand(): Promise<void> {
       const pile = piles[0];
       const hand = deck.splice(-5).reverse();
@@ -102,6 +109,7 @@ export const scene = defineScene({
       layOut(pile);
       report(`Dealt five onto ${pile.stack.id}, one every 110ms.`);
     }
+    // #endregion
 
     /** Everything back to the deck, thrown the other way. */
     async function gather(): Promise<void> {
@@ -138,6 +146,7 @@ export const scene = defineScene({
         + `${arc ? `, and rises ${arc} units off the felt` : ', and stays on the felt'}.`;
     }
 
+    // #region A tap: a pile, or the felt?
     // A tap on the felt is a throw at that spot; a tap on a pile is a throw at
     // the pile. Which one it was is stackUnder's answer.
     board.on('pointerdown', (pointer) => {
@@ -145,6 +154,7 @@ export const scene = defineScene({
       if (pile) void throwAtPile(pile);
       else void throwAtPoint(pointer);
     });
+    // #endregion
     document.getElementById('deal')?.addEventListener('click', () => void dealHand());
     document.getElementById('gather')?.addEventListener('click', () => void gather());
     document.getElementById('spins')?.addEventListener('click', () => {

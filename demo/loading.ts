@@ -2,6 +2,7 @@ import './serve';
 import {
   CardSprite, DECK_THEMES, DeckTheme, LoadingStage, SUITS, RANKS, buildDeck, cardsReady, loadingReport,
 } from 'felt';
+import { showCode } from './code';
 import { expose, standalone } from './kit';
 import { fpsMeter } from 'felt';
 import { defineScene } from 'felt';
@@ -11,6 +12,7 @@ import { defineScene } from 'felt';
 export const scene = defineScene({
   name: 'loading',
   create(ctx) {
+    showCode(ctx);
     // The engine starting up, made visible: one bar per thing it waits for, and
     // the moment the first card can be drawn.
     //
@@ -37,9 +39,11 @@ export const scene = defineScene({
     };
     ctx.listen(window, 'error', (event) => note(`error: ${(event as ErrorEvent).message}`));
 
+    // #region A board that waits for its art
     const makeBoard = () => ctx.board({
       parent: 'board', width: WIDTH, height: HEIGHT, backgroundColor: '#13463a', waitForArt: !atOnce,
     });
+    // #endregion
     let board = makeBoard();
     const t0 = board.createdAt;
     const at = () => `${(performance.now() - t0).toFixed(0).padStart(6)} ms`;
@@ -77,6 +81,7 @@ export const scene = defineScene({
     deal();
     note(`${at()}  52 cards made, none drawn yet`);
 
+    // #region Ready, and a new board on a warm engine
     /**
      * The board thrown away and a new one made: a new canvas, a new GL context,
      * an empty atlas - but the same engine, whose art (fonts, glyphs, portraits)
@@ -92,6 +97,7 @@ export const scene = defineScene({
         note(`${at()}  new board ready in ${(performance.now() - made).toFixed(0)} ms: its art was the engine's already`);
       });
     }
+    // #endregion
 
     // --- the bars ---------------------------------------------------------------
 
@@ -127,6 +133,7 @@ export const scene = defineScene({
       return what ? `${kind} ${PIPS[what] ?? what}` : key;
     }
 
+    // #region The bars: loadingReport, once a frame
     function show(): void {
       const report = loadingReport(board);
       for (const stage of report.stages) {
@@ -158,6 +165,7 @@ export const scene = defineScene({
           + (report.waitingFor.length > 12 ? ` +${report.waitingFor.length - 12}` : '')
         : '';
     }
+    // #endregion
     // Every frame, for as long as the scene runs - and not a frame after.
     show();
     ctx.onFrame(show);
@@ -171,6 +179,7 @@ export const scene = defineScene({
     document.getElementById('reload')!.addEventListener('click', () => location.reload());
     document.getElementById('again')!.addEventListener('click', () => newBoard());
 
+    // #region Restyling without a flash
     document.getElementById('restyle')!.addEventListener('click', () => {
       theme = DECK_THEMES[(DECK_THEMES.indexOf(theme) + 1) % DECK_THEMES.length];
       const started = performance.now();
@@ -182,6 +191,7 @@ export const scene = defineScene({
         stop();
         note(`${at()}  ${theme} finished, swapped in after ${(performance.now() - started).toFixed(0)} ms`);
       });
+    // #endregion
     });
 
     document.getElementById('lose')!.addEventListener('click', () => {

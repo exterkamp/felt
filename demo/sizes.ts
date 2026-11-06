@@ -3,6 +3,7 @@ import {
   Card, CardSprite, DECK_THEMES, DeckTheme, DISPLAY_FONT, Rank, Sprite, Suit,
   buildDeck, cardFaceMetrics, loadCardArt,
 } from 'felt';
+import { showCode } from './code';
 import { expose, standalone } from './kit';
 import { defineScene } from 'felt';
 
@@ -11,6 +12,7 @@ import { defineScene } from 'felt';
 export const scene = defineScene({
   name: 'sizes',
   create(ctx) {
+    showCode(ctx);
     // The same card at seven sizes.
     //
     // A card is painted at whatever width it is asked for rather than painted
@@ -64,6 +66,7 @@ export const scene = defineScene({
         const total = row.reduce((sum, w) => sum + w, 0) + gap * (row.length - 1);
         const baseline = top + heights[index];
         let x = (WIDTH - total) / 2;
+        // #region Each card painted at its own width
         for (const width of row) {
           const metrics = cardFaceMetrics(width);
           const card: Card = { ...face, faceUp };
@@ -74,11 +77,13 @@ export const scene = defineScene({
             { x: x + width / 2, y: baseline + 8, originY: 0 }));
           x += width + gap;
         }
+        // #endregion
         top = baseline + 26;
       }
       report();
     }
 
+    // #region The face's metrics at a width
     function report(): void {
       const note = document.getElementById('note');
       if (!note) return;
@@ -92,6 +97,7 @@ export const scene = defineScene({
         + `and a fanned pile of each would need to show ${small.peek.toFixed(1)} and `
         + `${large.peek.toFixed(1)} units to keep it readable.`;
     }
+    // #endregion
 
     document.getElementById('flip')?.addEventListener('click', () => {
       faceUp = !faceUp;

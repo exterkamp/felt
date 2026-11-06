@@ -707,6 +707,18 @@ check(mag.wrong.count === 1 && mag.wrong.loose && mag.wrong.off > 30,
   `another suit's stack does not pull it (${mag.wrong.off.toFixed(0)} units away, loose)`);
 check(mag.flicked.gained === 1 && mag.flicked.d < 3,
   `a card flicked at its stack curves in and lands on it (${mag.flicked.d.toFixed(1)} units off)`);
+// --- the code panel: each demo shows the code it runs -----------------------
+const panel = JSON.parse(await evaluate(`(async () => {
+  const wait = (ms) => new Promise(r => setTimeout(r, ms));
+  const toggle = document.querySelector('.felt-code-toggle'); const aside = document.querySelector('.felt-code');
+  const was = aside.hidden; toggle.click();
+  const t = performance.now(); while (!aside.querySelector('pre') && performance.now() - t < 3000) await wait(50);
+  return JSON.stringify({ was, open: !aside.hidden, titles: [...aside.querySelectorAll('summary')].map(s => s.textContent),
+    code: aside.querySelector('pre')?.textContent ?? '', api: [...aside.querySelectorAll('.api')].map(s => s.textContent) });
+})()`));
+check(panel.was && panel.open && panel.titles.length >= 2 && panel.code.includes('stacks.filter') && panel.api.includes('flickCard'),
+  `the Code button opens the demo's own source, in regions (${panel.titles.length}: "${panel.titles[0]}"…), felt's names marked`);
+
 // --- two seats: one game, three copies, in lockstep -------------------------
 console.log('\ntwo seats');
 await open('seats.html', '!!window.__felt?.server');

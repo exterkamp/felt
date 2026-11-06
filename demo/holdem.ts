@@ -4,6 +4,7 @@ import {
   defineHand, defineStack, flipCard, handBounds, handPositions, layHand, loadCardArt,
   orderStack, renderCourts, riffleShuffle, shuffledDeck, stackPositions, throwCard,
 } from 'felt';
+import { showCode } from './code';
 import { expose, label, standalone } from './kit';
 import { defineScene } from 'felt';
 
@@ -12,6 +13,7 @@ import { defineScene } from 'felt';
 export const scene = defineScene({
   name: 'holdem',
   create(ctx) {
+    showCode(ctx);
     // Dealing a hand of hold'em, as a program.
     //
     // No rules and nothing evaluated - no hands ranked, nobody bets. What it is,
@@ -67,6 +69,7 @@ export const scene = defineScene({
       outline(stackPositions(stack, places));
     }
 
+    // #region Seats are hands, the board is a stack
     function buildTable(): void {
       // A seat's two hole cards, held in a slight fan and turned to face that seat.
       for (const seat of SEATS) {
@@ -86,6 +89,7 @@ export const scene = defineScene({
       label(board, BURN.x, BURN.y - CARD_HEIGHT / 2 - 11, 'Burn');
       label(board, DECK.x, DECK.y - CARD_HEIGHT / 2 - 11, 'Deck');
     }
+    // #endregion
 
     function newDeck(): void {
       for (const pile of piles.values()) {
@@ -101,6 +105,7 @@ export const scene = defineScene({
       });
     }
 
+    // #region Delivering one card to a pile
     /**
      * Off the top of the deck and onto a pile: thrown at where that pile's next
      * card goes, turned over on arrival if the pile is a face-up one, and handed
@@ -135,6 +140,7 @@ export const scene = defineScene({
       orderStack(pile.cards, pile.stack, base);
       await turnOver();
     }
+    // #endregion
 
     function note(text: string): void {
       const el = document.getElementById('note');
@@ -143,6 +149,7 @@ export const scene = defineScene({
 
     const pause = (ms: number) => ctx.wait(ms * speed);
 
+    // #region The deal, in a dealer's order
     /**
      * One hand, dealt the way a dealer deals it: one card at a time, twice round
      * the table - not two to each seat in turn - then a burn before each of the
@@ -180,6 +187,7 @@ export const scene = defineScene({
       if (button) button.disabled = false;
       dealing = false;
     }
+    // #endregion
 
     document.getElementById('deal')?.addEventListener('click', () => void deal());
     document.getElementById('speed')?.addEventListener('click', () => {

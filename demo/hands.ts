@@ -2,6 +2,7 @@ import './serve';
 import {
   CARD_HEIGHT, Card, CardSprite, COURT_PALETTES, DEFAULT_DECK_THEME, Hand, buildDeck, defineHand, flipCard, handPositions, layHand, loadCardArt, renderCourts, shuffle, throwCard,
 } from 'felt';
+import { showCode } from './code';
 import { expose, label, standalone } from './kit';
 import { defineScene } from 'felt';
 
@@ -10,6 +11,7 @@ import { defineScene } from 'felt';
 export const scene = defineScene({
   name: 'hands',
   create(ctx) {
+    showCode(ctx);
     // Two hands of the same cards, held two ways.
     //
     // Mine at the bottom, face up and fanned wide; one across the table, face down
@@ -34,12 +36,14 @@ export const scene = defineScene({
     let radius = 260;
     let spread = 70;
 
+    // #region Two hands: the same one, turned round
     /** The two hands, rebuilt whenever the curve or the spread changes. */
     function shape(): void {
       mine = defineHand({ id: 'mine', x: 240, y: 540, step: 9, maxSpread: spread, radius });
       // The same hand, turned right round. Nothing else changes.
       theirs = defineHand({ id: 'theirs', x: 240, y: 110, step: 9, maxSpread: spread, radius, facing: 180 });
     }
+    // #endregion
 
     function newDeck(): void {
       for (const card of [...deck, ...held, ...opposite]) card.destroy();
@@ -54,6 +58,7 @@ export const scene = defineScene({
       report();
     }
 
+    // #region Fanning both
     /**
      * Both hands re-fanned around their middles, every card turned the short way
      * - the hand across the table holds cards either side of 180 degrees.
@@ -67,7 +72,9 @@ export const scene = defineScene({
       layHand(board, opposite, theirs, { base: 1000, except });
       report();
     }
+    // #endregion
 
+    // #region Throwing a card into a hand
     async function throwOne(): Promise<void> {
       const card = deck.pop();
       if (!card) return report('The deck is out.');
@@ -85,6 +92,7 @@ export const scene = defineScene({
       layOut();
       if (toMine) await flipCard(board, card, { faceUp: true, lift: 14, duration: 260 });
     }
+    // #endregion
 
     function takeOne(): void {
       const from = held.length >= opposite.length ? held : opposite;

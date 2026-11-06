@@ -3,6 +3,7 @@ import {
   CARD_HEIGHT, CARD_WIDTH, CardSprite, FanDirection, buildDeck, defineStack, flipCard, loadCardArt,
   orderStack, seeded, shuffle, stackPositions, throwCard, topCardIndex,
 } from 'felt';
+import { showCode } from './code';
 import { expose, slot, standalone } from './kit';
 import { defineScene } from 'felt';
 
@@ -11,6 +12,7 @@ import { defineScene } from 'felt';
 export const scene = defineScene({
   name: 'one-stack',
   create(ctx) {
+    showCode(ctx);
     // One stack. The whole of the page is below, and it is meant to stay short
     // enough to read in one go: a board, a pile, and four buttons.
     //
@@ -34,6 +36,7 @@ export const scene = defineScene({
     const board = ctx.board({ parent: 'board', width: WIDTH, height: HEIGHT, backgroundColor: '#13463a' });
     const FANS: FanDirection[] = ['down', 'right', 'none'];
     const MARGIN = 24;
+    // #region A stack, per fan
     /** Where the pile sits for each fan, so it always has the board to grow into. */
     const pileFor = (fan: FanDirection) => {
       if (fan === 'right') {
@@ -43,6 +46,7 @@ export const scene = defineScene({
       const y = MARGIN + CARD_HEIGHT / 2;
       return defineStack({ id: 'pile', x: WIDTH / 2, y, fan, step: 28, maxSpread: HEIGHT - 2 * y });
     };
+    // #endregion
     let fan: FanDirection = 'down';
     let stack = pileFor(fan);
     const outline = slot(board, stack.x, stack.y);
@@ -58,6 +62,7 @@ export const scene = defineScene({
         + `${pile.length} in the pile, ${deck.length} in the deck · ${r.drawCalls} draw call`);
     }
 
+    // #region Laying the pile out
     /** Puts every card where the stack says, in the order it says. */
     function lay(): void {
       stackPositions(stack, pile.length).forEach((at, i) => {
@@ -67,7 +72,9 @@ export const scene = defineScene({
       orderStack(pile, stack);
       report();
     }
+    // #endregion
 
+    // #region Throwing a card onto it
     async function add(): Promise<void> {
       const card = deck.pop();
       if (!card) return;
@@ -78,6 +85,7 @@ export const scene = defineScene({
       await throwCard(board, sprite, { stack, count: pile.length - 1 }, { arc: 20 });
       lay();
     }
+    // #endregion
 
     function take(): void {
       const at = topCardIndex(stack, pile.length);

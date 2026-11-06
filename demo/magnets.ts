@@ -3,6 +3,7 @@ import {
   CARD_HEIGHT, CARD_WIDTH, CardSprite, Magnet, SUITS, SUIT_COLORS, Suit, animatorOf, buildDeck, defineScene,
   flickCard, flipCard, loadCardArt, seeded, shuffle, throwCard,
 } from 'felt';
+import { showCode } from './code';
 import { expose, label, standalone } from './kit';
 
 // Flicking onto stacks. The same flick as the Flicking demo, given magnets:
@@ -29,6 +30,7 @@ interface Stack {
 export const scene = defineScene({
   name: 'magnets',
   create(ctx) {
+    showCode(ctx);
     const board = ctx.board({ parent: 'board', width: W, height: H, backgroundColor: '#13463a' });
     void loadCardArt(board);
     const animator = animatorOf(board);
@@ -83,12 +85,14 @@ export const scene = defineScene({
     }
 
     const suitOf = (card: CardSprite) => card.card.suit as Suit;
+    // #region Where a card may land: one magnet per valid stack
     /** Where this card may go: the game's rule. One stack per suit. */
     const validFor = (card: CardSprite) => stacks.filter((stack) => stack.suit === suitOf(card));
     /** A stack's pull, at the top of its pile: each card sits a hair higher. */
     const magnetOf = (stack: Stack): Magnet => ({
       x: stack.x, y: stack.y - stack.cards.length * 0.35, angle: 0, reach: REACH,
     });
+    // #endregion
 
     const stacked = () => stacks.reduce((n, stack) => n + stack.cards.length, 0);
     function say(text: string): void {
@@ -99,6 +103,7 @@ export const scene = defineScene({
     let held: CardSprite | undefined;
     let lastFlick: unknown;
 
+    // #region Picking a card up
     board.on('dragstart', (pointer, node) => {
       const card = node as CardSprite;
       const fromDeck = deck.includes(card);
@@ -115,11 +120,13 @@ export const scene = defineScene({
       }
       for (const stack of validFor(card)) stack.lit.alpha = 1;
     });
+    // #endregion
 
     board.on('drag', (pointer) => {
       held?.setPosition(pointer.x - grip.x, pointer.y - grip.y);
     });
 
+    // #region Flicking it, with magnets
     board.on('dragend', (pointer) => {
       const card = held;
       held = undefined;
@@ -155,6 +162,7 @@ export const scene = defineScene({
             : `Onto the ${stack.suit}. ${stacked()} of 52 stacked, ${flicks} flicks.`);
         },
       });
+    // #endregion
     });
 
     // The same board, with and without its lens.

@@ -14,7 +14,7 @@ import { Director, Scene, defineScene, engine } from 'felt';
 (window as unknown as { __feltApp: boolean }).__feltApp = true;
 
 const modules = import.meta.glob<{ scene: Scene<never> }>(
-  ['./*.ts', '!./app.ts', '!./kit.ts', '!./serve.ts']);
+  ['./*.ts', '!./app.ts', '!./code.ts', '!./kit.ts', '!./serve.ts']);
 const pages = import.meta.glob<string>('./*.html', { query: '?raw', import: 'default' });
 const nameOf = (path: string) => path.replace(/^.*\//, '').replace(/\.(ts|html)$/, '');
 const available = new Set(Object.keys(modules).map(nameOf));

@@ -1,5 +1,6 @@
 import './serve';
 import { CardSprite, buildDeck, defineScene, loadCardArt } from 'felt';
+import { showCode } from './code';
 import { expose, standalone } from './kit';
 
 // A thousand cards in motion, for measuring. Every card is moved every frame
@@ -12,6 +13,7 @@ type Mode = 'flat' | '3d' | 'still';
 export const scene = defineScene({
   name: 'stress',
   create(ctx) {
+    showCode(ctx);
     const W = 560;
     const H = 700;
     const board = ctx.board({ parent: 'board', width: W, height: H, backgroundColor: '#13463a' });
@@ -38,6 +40,7 @@ export const scene = defineScene({
     }
 
     let t = 0;
+    // #region Every card moved every frame
     ctx.onFrame((delta) => {
       if (paused || mode === 'still') return;
       t += delta / 1000;
@@ -55,11 +58,13 @@ export const scene = defineScene({
         }
       }
     });
+    // #endregion
 
     const stats = ctx.$('#stats');
     const work: number[] = [];
     let last = performance.now();
     const gaps: number[] = [];
+    // #region What a frame costs
     board.on('render', () => {
       work.push(board.frameWork);
       const now = performance.now();
@@ -67,6 +72,7 @@ export const scene = defineScene({
       last = now;
       if (work.length > 60) { work.shift(); gaps.shift(); }
     });
+    // #endregion
     ctx.every(300, () => {
       const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
       stats.textContent = `${cards.length} cards · ${mode} · board work ${avg(work).toFixed(2)} ms/frame`

@@ -3,6 +3,7 @@ import {
   Card, CardSprite, Rules, Simulation, Stamped, buildDeck, defineHand, defineScene, defineStack,
   flipCard, handPositions, layHand, loadCardArt, orderStack, shuffle, stackPositions, throwCard,
 } from 'felt';
+import { showCode } from './code';
 import { expose, standalone } from './kit';
 
 // Multiplayer, with the network faked: three Simulations of one game.
@@ -34,6 +35,7 @@ const INPUT_DELAY = 15;   // ticks: 500 ms, comfortably more than a round trip
 const HAND = 6;
 
 const other = (seat: Seat): Seat => (seat === 'north' ? 'south' : 'north');
+// #region The game, as rules
 const rules: Rules<Table, Command> = {
   apply(state, command, ctx) {
     if (command.type === 'deal') {
@@ -64,15 +66,18 @@ const rules: Rules<Table, Command> = {
     state.clock = TURN_TICKS;
   },
 };
+// #endregion
 
 export const scene = defineScene({
   name: 'seats',
   create(ctx) {
+    showCode(ctx);
     const cards = new Map<string, Card>(buildDeck().map((c) => [c.id, c]));
     const start = (): Table => ({
       deck: [...cards.keys()], hands: { north: [], south: [] }, pile: [], turn: 'south', clock: TURN_TICKS,
     });
     const SEED = 2026;
+    // #region Three copies, in lockstep on the engine's fixed steps
     const server = new Simulation(rules, start(), { seed: SEED, step: TICK_MS });
     const seats: Record<Seat, Simulation<Table, Command>> = {
       north: new Simulation(rules, start(), { seed: SEED, step: TICK_MS }),
@@ -96,6 +101,7 @@ export const scene = defineScene({
     ctx.scope.add(server.run(ctx.engine));
     ctx.scope.add(seats.north.run(ctx.engine));
     ctx.scope.add(seats.south.run(ctx.engine));
+    // #endregion
 
     // --- the two tables -----------------------------------------------------
     const W = 360;
@@ -176,6 +182,7 @@ export const scene = defineScene({
         if (view.seat === 'south') shownSecond = second;
         if (applied.length) show(view);
       }));
+      // #region A tap is a request to the server
       // A tap on your own card, on your turn, asks the server. The view
       // never moves the card itself: the game will, when the play comes back.
       view.board.on('tap', (pointer) => {
@@ -186,11 +193,13 @@ export const scene = defineScene({
         if (state.turn !== view.seat) { refused++; return; }
         toServer({ type: 'play', seat: view.seat, card: id });
       });
+      // #endregion
     }
 
     // --- in sync? -------------------------------------------------------------
     const sync = ctx.$('#sync');
     const hashes = { agreed: 0, differed: 0 };
+    // #region Checking every copy agrees
     // After the last of the three has stepped (they run in the order they
     // were put on the engine), so all three are at the same tick.
     ctx.scope.add(seats.south.onTick(() => {
@@ -199,6 +208,7 @@ export const scene = defineScene({
       if (seats.north.hash() === h && seats.south.hash() === h) hashes.agreed++;
       else hashes.differed++;
     }));
+    // #endregion
     ctx.every(250, () => {
       sync.textContent = `tick ${server.tick} · server ${server.hash()} · north ${seats.north.hash()}`
         + ` · south ${seats.south.hash()}\n${hashes.differed ? `${hashes.differed} ticks DIFFERED` : 'in sync every tick'}`

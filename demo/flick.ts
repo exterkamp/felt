@@ -3,6 +3,7 @@ import {
   CARD_HEIGHT, CARD_WIDTH, CardSprite, animatorOf, buildDeck, defineScene, flickCard, flipCard,
   loadCardArt, seeded, shuffle, throwCard,
 } from 'felt';
+import { showCode } from './code';
 import { expose, label, standalone } from './kit';
 
 // Flicking. The board picks a dragged card up and swings it (see PickUp);
@@ -19,6 +20,7 @@ const SURFACES = { felt: 1500, ice: 380 } as const;
 export const scene = defineScene({
   name: 'flick',
   create(ctx) {
+    showCode(ctx);
     const board = ctx.board({ parent: 'board', width: W, height: H, backgroundColor: '#13463a' });
     void loadCardArt(board);
     const animator = animatorOf(board);
@@ -76,6 +78,7 @@ export const scene = defineScene({
     let lastFlick: unknown;
     let held: CardSprite | undefined;
 
+    // #region Picking a card up
     board.on('dragstart', (pointer, node) => {
       const card = node as CardSprite;
       const fromDeck = deck.includes(card);
@@ -92,12 +95,16 @@ export const scene = defineScene({
         void flipCard(board, card, { faceUp: true, lift: 0, duration: 240 });
       }
     });
+    // #endregion
 
+    // #region Carrying it
     board.on('drag', (pointer) => {
       if (!held) return;
       held.setPosition(pointer.x - grip.x, pointer.y - grip.y);
     });
+    // #endregion
 
+    // #region Letting go: a flick
     board.on('dragend', (pointer) => {
       const card = held;
       held = undefined;
@@ -127,6 +134,7 @@ export const scene = defineScene({
             + ` Best ${best}, total ${total} from ${flicks}.`);
         },
       });
+    // #endregion
     });
 
     function say(text: string): void {
@@ -141,12 +149,14 @@ export const scene = defineScene({
       walls = !walls;
       (event.target as HTMLElement).textContent = `Walls: ${walls ? 'on' : 'off'}`;
     });
+    // #region Flat or in depth
     // The same board, with and without its lens: flicks follow it, flat or
     // in depth.
     ctx.listen(ctx.$('#view'), 'click', (event) => {
       board.setFov(board.is3d ? 0 : 45);
       (event.target as HTMLElement).textContent = `View: ${board.is3d ? '3D' : '2D'}`;
     });
+    // #endregion
     ctx.listen(ctx.$('#gather'), 'click', () => {
       // Back to the deck, face down, in a row of quick throws.
       [...table].forEach((card, i) => {

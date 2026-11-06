@@ -4,6 +4,7 @@ import {
   DECK_THEME_LABELS, DISPLAY_FONT, DeckTheme, FACE_STYLES, FaceStyle, Rank, SUITS, Sprite, Suit,
   cardFaceMetrics, colorCss, loadCardArt, renderCourts,
 } from 'felt';
+import { showCode } from './code';
 import { expose, standalone } from './kit';
 import { defineScene } from 'felt';
 
@@ -12,6 +13,7 @@ import { defineScene } from 'felt';
 export const scene = defineScene({
   name: 'faces',
   create(ctx) {
+    showCode(ctx);
     // Three layouts, side by side, at a size you can drag.
     //
     // Four ranks, because four is what it takes to show the argument: an ace, a
@@ -29,7 +31,9 @@ export const scene = defineScene({
     let suit: Suit = 'spades';
     let theme: DeckTheme = 'press';
 
+    // #region Art for every deck
     void loadCardArt(board, { themes: [...DECK_THEMES] });
+    // #endregion
 
     /** A deck's court palette, printed on the deck's own stock. */
     const courtStart = (t: DeckTheme): CourtPalette => ({
@@ -53,6 +57,7 @@ export const scene = defineScene({
       labels.push(board.text(text, { font: size > 10 ? DISPLAY_FONT : BODY_FONT, size, color }, { x, y }));
     }
 
+    // #region A card in each face style
     function lay(): void {
       for (const card of cards) card.destroy();
       for (const l of labels) l.destroy();
@@ -79,6 +84,7 @@ export const scene = defineScene({
       const note = document.getElementById('note');
       if (note) note.textContent = `${DECK_THEME_LABELS[theme]}, ${suit}, ${width} units across.`;
     }
+    // #endregion
 
     document.getElementById('size')?.addEventListener('input', (event) => {
       width = Number((event.target as HTMLInputElement).value);

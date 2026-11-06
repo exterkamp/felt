@@ -2,6 +2,7 @@ import './serve';
 import {
   Card, CardSprite, DECK_STOCK, DECK_THEMES, DECK_THEME_LABELS, DeckTheme, TuckBox, defineStack, loadCardArt, orderStack, riffleShuffle, shuffledDeck, stackPositions,
 } from 'felt';
+import { showCode } from './code';
 import { expose, standalone } from './kit';
 import { defineScene } from 'felt';
 
@@ -10,6 +11,7 @@ import { defineScene } from 'felt';
 export const scene = defineScene({
   name: 'box',
   create(ctx) {
+    showCode(ctx);
     // A deck, in the box it came in.
     //
     // The box is the one solid object on a felt board - a mesh with a depth
@@ -36,6 +38,7 @@ export const scene = defineScene({
     let busy = false;
     const stack = defineStack({ id: 'deck', ...DEAL_AT });
 
+    // #region A box on the felt
     function build(): void {
       busy = false;
       box?.destroy();
@@ -49,6 +52,7 @@ export const scene = defineScene({
       set('lid', 0);
       note(`${DECK_THEME_LABELS[theme]}, sealed. Fifty-two inside.`);
     }
+    // #endregion
 
     /** A number on the box, tweened. */
     function tweenBox(key: 'open' | 'turn', from: number, to: number, duration: number, ease: string): Promise<void> {
@@ -59,6 +63,7 @@ export const scene = defineScene({
       });
     }
 
+    // #region Turn, open, lift out, riffle
     /**
      * The whole sequence, as four beats, each waiting for the last: a lid still
      * moving when the deck starts to rise is a deck coming out through a lid.
@@ -90,7 +95,9 @@ export const scene = defineScene({
       note('Shuffled. "Put it back" seals a new one.');
       busy = false;
     }
+    // #endregion
 
+    // #region The block becomes real cards
     /** Real cards, stacked where the block was, in front of the box. */
     function handOver(at: { x: number; y: number }): void {
       cards = shuffledDeck().map((card: Card, i) => {
@@ -102,6 +109,7 @@ export const scene = defineScene({
         return sprite;
       });
     }
+    // #endregion
 
     function slideTo(from: { x: number; y: number }, duration: number): Promise<void> {
       const at = stackPositions(stack, cards.length);
