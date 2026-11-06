@@ -1,9 +1,8 @@
-// The two programs: every card and sprite in one instanced draw, and the
-// odd solid object (a tuck box) as plain triangles with a depth buffer.
+// The program: every card and sprite in one instanced draw.
 //
-// Both share the projection, which is written out once in `PROJECT` and once
-// in lens.ts. The two must agree - picking and `deckCentre` go through the
-// TypeScript copy - so a change to one is a change to both.
+// The projection is written out once in `PROJECT` and once in lens.ts. The
+// two must agree - picking goes through the TypeScript copy - so a change to
+// one is a change to both.
 
 /** Floats per instance. Eight vec4s. */
 export const INSTANCE_FLOATS = 32;
@@ -25,10 +24,6 @@ vec4 projectAt(vec3 world, vec2 centre, float distance) {
   // stays linear in the world point - which keeps textures perspective-correct.
   vec2 clip = (a * centre + b) * w + a * (world.xy - centre);
   return vec4(clip, -world.z / 4000.0, w);
-}
-
-vec4 projectWorld(vec3 world, vec2 centre) {
-  return projectAt(world, centre, u_distance);
 }
 `;
 
@@ -213,41 +208,6 @@ void main() {
 
   float alpha = card.a + shadow * (1.0 - card.a);
   colour = vec4(card.rgb, alpha) * v_alpha;
-  if (colour.a <= 0.002) discard;
-}
-`;
-
-export const MESH_VERTEX = /* glsl */ `#version 300 es
-precision highp float;
-${PROJECT}
-layout(location = 0) in vec3 a_position;  // model space: x right, y up, z towards you
-layout(location = 1) in vec2 a_uv;
-uniform mat3 u_rotation;
-uniform vec3 u_offset;    // model-space offset, before the rotation
-uniform vec3 u_origin;    // where the model's origin is on the board
-uniform vec2 u_centre;    // its vanishing point
-out vec2 v_uv;
-void main() {
-  vec3 m = u_rotation * (a_position + u_offset);
-  // Model y is up; the board's y is down. Model z comes out as the board's -
-  // towards the camera - which is what Phaser made of tuck-box.ts's numbers,
-  // whatever its comments say, and the box was tuned by eye against that.
-  vec3 world = u_origin + vec3(m.x, -m.y, m.z);
-  gl_Position = projectWorld(world, u_centre);
-  v_uv = a_uv;
-}
-`;
-
-export const MESH_FRAGMENT = /* glsl */ `#version 300 es
-precision highp float;
-precision highp sampler2DArray;
-uniform sampler2DArray u_atlas;
-uniform float u_layer;
-uniform float u_alpha;
-in vec2 v_uv;
-out vec4 colour;
-void main() {
-  colour = texture(u_atlas, vec3(v_uv, u_layer)) * u_alpha;
   if (colour.a <= 0.002) discard;
 }
 `;

@@ -1,16 +1,14 @@
 import { Atlas } from './atlas.js';
 import {
-  CARD_ROWS, INSTANCE_FLOATS, INSTANCE_FRAGMENT, INSTANCE_VERTEX, MESH_FRAGMENT, MESH_VERTEX,
+  CARD_ROWS, INSTANCE_FLOATS, INSTANCE_FRAGMENT, INSTANCE_VERTEX,
 } from './shaders.js';
 
-// The renderer: one texture, one instanced draw, and the meshes in between.
+// The renderer: one texture, one instanced draw.
 //
 // The board hands it a list already sorted back to front. Every card and
-// sprite in it writes 32 floats into one buffer and the run is drawn with a
-// single drawElementsInstanced - a deck, a table of four hands and a
-// discard pile is one call. A mesh (a tuck box) splits the run where it sits
-// in the order, is drawn with the depth buffer it needs, and the run carries
-// on above it.
+// sprite in it writes 32 floats into one buffer and the whole list is drawn
+// with a single drawElementsInstanced - a deck, a table of four hands and a
+// discard pile is one call.
 
 export interface InstanceItem {
   readonly drawKind: 'instance';
@@ -19,12 +17,7 @@ export interface InstanceItem {
   writeInstance(out: Float32Array, offset: number): boolean | number;
 }
 
-export interface MeshItem {
-  readonly drawKind: 'mesh';
-  drawMesh(renderer: Renderer): void;
-}
-
-export type DrawItem = InstanceItem | MeshItem;
+export type DrawItem = InstanceItem;
 
 export interface FrameCamera {
   width: number;
@@ -65,38 +58,13 @@ function uniforms(gl: WebGL2RenderingContext, program: WebGLProgram, names: stri
 
 const PROJECTION_UNIFORMS = ['u_board', 'u_distance', 'u_vanish', 'u_local', 'u_atlas'];
 
-export interface MeshBuffers {
-  /** The renderer generation it was made in; stale after a lost context. */
-  generation: number;
-  vao: WebGLVertexArrayObject;
-  position: WebGLBuffer;
-  uv: WebGLBuffer;
-  count: number;
-}
-
-export interface MeshDraw {
-  buffers: MeshBuffers;
-  layer: number;
-  /** Row-major 3x3 rotation, applied in model space. */
-  rotation: readonly number[];
-  offset: readonly [number, number, number];
-  origin: readonly [number, number, number];
-  centre: readonly [number, number];
-  /** This mesh's own lens; undefined uses the board's. */
-  distance?: number;
-  alpha?: number;
-  /** Which winding faces the camera, or 'none' to draw both sides. */
-  cull?: 'cw' | 'ccw' | 'none';
-}
 
 export class Renderer {
   readonly gl: WebGL2RenderingContext;
   // Everything below is the GPU's, and a lost context takes all of it with
   // it - so it is made in `setup`, which a restored context runs again.
   private cardProgram!: WebGLProgram;
-  private meshProgram!: WebGLProgram;
   private cardUniforms!: Uniforms;
-  private meshUniforms!: Uniforms;
   private cardVao!: WebGLVertexArrayObject;
   /**
    * Instance buffers, used in turn. Re-specifying one buffer every frame
@@ -116,15 +84,11 @@ export class Renderer {
   private quadOffset = 0;
   /** Draws in the last frame that could use the flat quad. */
   flatDraws = 0;
-  /**
-   * Bumped every time the GPU's objects are made again. Anything holding a
-   * buffer of its own - a tuck box's meshes - compares against it.
-   */
+  /** Bumped every time the GPU's objects are made again. */
   generation = 0;
   private instances = new Float32Array(INSTANCE_FLOATS * 256);
   private texture: WebGLTexture | null = null;
   private textureLayers = 0;
-  private camera?: FrameCamera;
   /** Draw calls in the last frame, for anyone measuring. */
   drawCalls = 0;
   instanceCount = 0;
@@ -138,15 +102,15 @@ export class Renderer {
     const gl = canvas.getContext('webgl2', {
       alpha: options.transparent ?? false,
       antialias: true,
-      depth: true,
+      // Cards are drawn in order, never depth-tested: no depth buffer to keep.
+      depth: false,
       premultipliedAlpha: true,
       preserveDrawingBuffer: false,
     });
     if (!gl) throw new Error('felt: this browser has no WebGL2');
     this.gl = gl;
     this.maxTextureLayers = gl.getParameter(gl.MAX_ARRAY_TEXTURE_LAYERS) as number;
-    // A renderer made to replace a dead one counts on from it, so meshes
-    // made by the old one know to make themselves again.
+    // A renderer made to replace a dead one counts on from it.
     this.generation = options.generation ?? 0;
     this.setup();
     atlas.sink = (page, x, y, w, h, pixels) => this.upload(page, x, y, w, h, pixels);
@@ -172,10 +136,7 @@ export class Renderer {
     const gl = this.gl;
     this.generation++;
     this.cardProgram = link(gl, INSTANCE_VERTEX, INSTANCE_FRAGMENT);
-    this.meshProgram = link(gl, MESH_VERTEX, MESH_FRAGMENT);
     this.cardUniforms = uniforms(gl, this.cardProgram, [...PROJECTION_UNIFORMS, 'u_frontFacing']);
-    this.meshUniforms = uniforms(gl, this.meshProgram,
-      [...PROJECTION_UNIFORMS, 'u_rotation', 'u_offset', 'u_origin', 'u_centre', 'u_layer', 'u_alpha']);
 
     // The card: two columns and CARD_ROWS rows of quads, unit square.
     const grid: number[] = [];
@@ -222,38 +183,6 @@ export class Renderer {
     for (let i = 1; i <= 8; i++) {
       gl.vertexAttribPointer(i, 4, gl.FLOAT, false, stride, first * stride + (i - 1) * 16);
     }
-  }
-
-  /** A mesh's vertex buffers. Positions are model-space xyz, uvs atlas 0-1. */
-  createMesh(positions: Float32Array, uvs: Float32Array): MeshBuffers {
-    const gl = this.gl;
-    const vao = gl.createVertexArray()!;
-    gl.bindVertexArray(vao);
-    const position = gl.createBuffer()!;
-    gl.bindBuffer(gl.ARRAY_BUFFER, position);
-    gl.bufferData(gl.ARRAY_BUFFER, positions, gl.DYNAMIC_DRAW);
-    gl.enableVertexAttribArray(0);
-    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
-    const uv = gl.createBuffer()!;
-    gl.bindBuffer(gl.ARRAY_BUFFER, uv);
-    gl.bufferData(gl.ARRAY_BUFFER, uvs, gl.STATIC_DRAW);
-    gl.enableVertexAttribArray(1);
-    gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 0, 0);
-    gl.bindVertexArray(null);
-    return { generation: this.generation, vao, position, uv, count: positions.length / 3 };
-  }
-
-  updateMesh(buffers: MeshBuffers, positions: Float32Array): void {
-    const gl = this.gl;
-    gl.bindBuffer(gl.ARRAY_BUFFER, buffers.position);
-    gl.bufferSubData(gl.ARRAY_BUFFER, 0, positions);
-  }
-
-  destroyMesh(buffers: MeshBuffers): void {
-    const gl = this.gl;
-    gl.deleteBuffer(buffers.position);
-    gl.deleteBuffer(buffers.uv);
-    gl.deleteVertexArray(buffers.vao);
   }
 
   /**
@@ -329,38 +258,27 @@ export class Renderer {
   frame(items: readonly DrawItem[], camera: FrameCamera, background: [number, number, number, number]): void {
     const gl = this.gl;
     if (gl.isContextLost()) return;
-    this.camera = camera;
     this.ensureLayers(this.atlas.pages.length);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.texture);
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
     gl.clearColor(background[0] * background[3], background[1] * background[3],
       background[2] * background[3], background[3]);
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.clear(gl.COLOR_BUFFER_BIT);
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-    gl.disable(gl.DEPTH_TEST);
     gl.disable(gl.CULL_FACE);
 
-    // Every instance first, into one buffer, noting where the meshes cut it.
+    // Every instance, into one buffer.
     // Room for every item and a shadow for each, so no write can overrun.
     if (this.instances.length < items.length * 2 * INSTANCE_FLOATS) {
       this.instances = new Float32Array(Math.max(items.length * 2, this.instances.length / INSTANCE_FLOATS * 2)
         * INSTANCE_FLOATS);
     }
-    const runs: ({ first: number; count: number; bowed: boolean } | MeshItem)[] = [];
     let count = 0;
-    let runStart = 0;
     let bowed = false;
     const instances = this.instances;
     for (const item of items) {
-      if (item.drawKind === 'mesh') {
-        if (count > runStart) runs.push({ first: runStart, count: count - runStart, bowed });
-        runs.push(item);
-        runStart = count;
-        bowed = false;
-        continue;
-      }
       const wrote = Number(item.writeInstance(instances, count * INSTANCE_FLOATS));
       for (let k = 0; k < wrote; k++) {
         // A bow is the only thing the grid's rows are for.
@@ -368,7 +286,6 @@ export class Renderer {
         count++;
       }
     }
-    if (count > runStart) runs.push({ first: runStart, count: count - runStart, bowed });
     this.instanceCount = count;
     this.drawCalls = 0;
     this.flatDraws = 0;
@@ -383,11 +300,7 @@ export class Renderer {
     }
     gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.instances, 0, used);
 
-    for (const run of runs) {
-      if ('drawKind' in run) {
-        run.drawMesh(this);
-        continue;
-      }
+    if (count) {
       gl.useProgram(this.cardProgram);
       this.setProjection(this.cardUniforms, camera);
       // The grid is wound clockwise on screen, so that is the side facing
@@ -395,53 +308,17 @@ export class Renderer {
       gl.frontFace(gl.CW);
       gl.uniform1f(this.cardUniforms['u_frontFacing'], 1);
       gl.bindVertexArray(this.cardVao);
-      this.pointInstances(run.first);
-      if (run.bowed) {
-        gl.drawElementsInstanced(gl.TRIANGLES, this.indexCount, gl.UNSIGNED_SHORT, 0, run.count);
+      this.pointInstances(0);
+      if (bowed) {
+        gl.drawElementsInstanced(gl.TRIANGLES, this.indexCount, gl.UNSIGNED_SHORT, 0, count);
       } else {
-        gl.drawElementsInstanced(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, this.quadOffset, run.count);
+        gl.drawElementsInstanced(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, this.quadOffset, count);
         this.flatDraws++;
       }
       this.drawCalls++;
     }
     gl.bindVertexArray(null);
     gl.frontFace(gl.CCW);
-  }
-
-  /** Draws a mesh, with depth, in the middle of a frame. */
-  drawMesh(mesh: MeshDraw): void {
-    const gl = this.gl;
-    const camera = this.camera;
-    if (!camera) return;
-    gl.useProgram(this.meshProgram);
-    const u = this.meshUniforms;
-    this.setProjection(u, camera, mesh.distance ?? camera.distance);
-    gl.uniformMatrix3fv(u['u_rotation'], true, mesh.rotation as number[]);
-    gl.uniform3f(u['u_offset'], ...mesh.offset);
-    gl.uniform3f(u['u_origin'], ...mesh.origin);
-    gl.uniform2f(u['u_centre'], ...mesh.centre);
-    gl.uniform1f(u['u_layer'], mesh.layer);
-    gl.uniform1f(u['u_alpha'], mesh.alpha ?? 1);
-    gl.enable(gl.DEPTH_TEST);
-    gl.depthFunc(gl.LESS);
-    if (mesh.cull && mesh.cull !== 'none') {
-      gl.enable(gl.CULL_FACE);
-      gl.cullFace(gl.BACK);
-      gl.frontFace(mesh.cull === 'cw' ? gl.CW : gl.CCW);
-    } else {
-      gl.disable(gl.CULL_FACE);
-    }
-    gl.bindVertexArray(mesh.buffers.vao);
-    gl.drawArrays(gl.TRIANGLES, 0, mesh.buffers.count);
-    this.drawCalls++;
-    gl.disable(gl.DEPTH_TEST);
-    gl.disable(gl.CULL_FACE);
-    gl.bindVertexArray(null);
-  }
-
-  /** Clears the depth buffer, so one solid object does not hide behind another's. */
-  clearDepth(): void {
-    this.gl.clear(this.gl.DEPTH_BUFFER_BIT);
   }
 
   destroy(): void {
@@ -452,6 +329,5 @@ export class Renderer {
     for (const buffer of this.instanceBuffers) gl.deleteBuffer(buffer);
     gl.deleteVertexArray(this.cardVao);
     gl.deleteProgram(this.cardProgram);
-    gl.deleteProgram(this.meshProgram);
   }
 }

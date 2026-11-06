@@ -4,7 +4,7 @@ A WebGL2 engine for card games, and nothing else.
 
 Everything [phaser-card-engine](https://github.com/exterkamp/phaser-card-engine)
 does, without Phaser underneath it: the same cards, stacks, hands, faces,
-courts, decks, throws, deals, riffles and tuck box, drawn by a renderer that
+courts, decks, throws, deals and riffles, drawn by a renderer that
 only ever has to draw cards. Every card on the table is one instance of one
 instanced draw call, a card can lift, tip, roll and bend because it is a real
 two-sided surface in a real (optional) perspective, and a board that nothing
@@ -26,12 +26,12 @@ await throwCard(board, cards[0], { x: 240, y: 320 }, { arc: 28 });
 
 | | |
 | --- | --- |
-| `src/core/` | Everything that draws nothing, carried over from phaser-card-engine **unchanged** with its tests: cards and suit vocabularies, `Stack` and `Hand` geometry, `cardFaceMetrics` and the three faces, shuffles and `riffleSplit`, the six decks and their inks, court palettes and the background parting, the tuck box as quads. Its own entry point, `felt/core`, and it runs in node. |
+| `src/core/` | Everything that draws nothing, carried over from phaser-card-engine **unchanged** with its tests: cards and suit vocabularies, `Stack` and `Hand` geometry, `cardFaceMetrics` and the three faces, shuffles and `riffleSplit`, the six decks and their inks, court palettes and the background parting. Its own entry point, `felt/core`, and it runs in node. |
 | `src/runtime/` | `Engine` (the page's one loop, clock, fixed steps, lifecycle and services), `Clock` (`RafClock`, `ManualClock`), `PageLifecycle`, `Scene` and `Director`, `Disposables`, `Simulation` (deterministic game state for multiplayer). |
-| `src/gl/` | `Renderer` (one instanced program for every card and sprite, one depth-tested program for solid meshes), `Atlas` (every picture on a few 2048² layers of one texture array), `lens.ts` (the projection, written once in TypeScript and once in GLSL). |
+| `src/gl/` | `Renderer` (one instanced program for every card and sprite), `Atlas` (every picture on a few 2048² layers of one texture array), `lens.ts` (the projection, written once in TypeScript and once in GLSL). |
 | `src/scene/` | `Board` (canvas, pixel ratio, fit, input, the sleep-when-still loop), `Node` and `Sprite`, `Tweens` with Phaser's config shape and ease names. |
-| `src/art/` | `CardSprite`, the face and back painters, suit pips, the court renderer and its worker, tuck box printing. |
-| `src/play/` | `throwCard`, `dealCards`, `layHand`, `orderStack`, `flipCard`, `riffleShuffle`, `TuckBox`. |
+| `src/art/` | `CardSprite`, the face and back painters, suit pips, the court renderer and its worker. |
+| `src/play/` | `throwCard`, `dealCards`, `layHand`, `orderStack`, `flipCard`, `riffleShuffle`, `flickCard`. |
 
 ## Why not Phaser
 
@@ -53,9 +53,6 @@ The things phaser-card-engine had to work round are the reasons for this:
 - **Bending a card meant swapping it for a Mesh** for the length of a riffle,
   snapshot and all. Here `bow`, `tilt`, `turn` and `z` are properties of every
   card, zero by default, and cost nothing when they are zero.
-- **The tuck box needed three meshes in a careful order**, because Phaser
-  sorted faces within a mesh and never between them. Here its parts share a
-  depth buffer and occlude each other like solid things.
 
 Measured, in the same software-rendered headless Chrome: the hold'em riffle
 runs at **54 ms a frame against Phaser's 176**, the whole engine plus core is
@@ -187,7 +184,7 @@ The names were kept wherever the idea survived, so a port is mostly deleting
 | `riffleShuffle(this, root, sprites, stack)` | `riffleShuffle(board, sprites, stack)` |
 | `renderCourts(this, palette, opts)` | `renderCourts(board, palette, opts)` |
 | `suitTexture(scene, suit, color)` → key | `suitTexture(board, suit, color, size)` → region; `board.image(region, ...)` |
-| `new TuckBox(this, x, y, opts)` + `update` | `new TuckBox(board, x, y, opts)` - steps itself while it spins |
+| `new TuckBox(this, x, y, opts)` + `update` | not carried over |
 | `toBoard(this, pointer)` | pointers arrive in board units already; `board.toBoard(clientX, clientY)` |
 | `this.input.setDraggable(sprite)` + `drag` events | `sprite.draggable = true`; `board.on('dragstart' \| 'drag' \| 'dragend')` |
 | `this.add.text`, `this.add.graphics` | `board.text(...)`, `board.graphic(w, h, paint)` |
@@ -304,8 +301,8 @@ npm run demo        # http://localhost:4390, and the LAN address
 The index is one page: every demo is a scene, and moving between them never
 navigates (each still works on its own page too). There are three basics -
 one stack, the engine loading, and two seats playing one game through a fake
-network in lockstep - then the same nine pages as phaser-card-engine's - stacks, card sizes, throwing,
-hold'em, hands, the deck editor, the riffle, the tuck box, card faces - ported
+network in lockstep - then eight of phaser-card-engine's pages - stacks, card sizes, throwing,
+hold'em, hands, the deck editor, the riffle, card faces - ported
 to felt. Some do more than before: thrown cards arc off the felt, cards dealt
 face up flip over in the air, and the riffled packets are the cards
 themselves.
@@ -322,8 +319,7 @@ against what the geometry asked for: one draw call for the stacks page, the
 card a finger lands on is the one drawn in front, a real pointer drag between
 piles, all twelve courts rendered, messy angles settled and bounded, hold'em's
 deal order and final counts, the riffle bending all 52 without ever drawing the
-pile over the packets, hands re-fanning without spinning, the tuck box handing
-over its deck, throws leaving the felt - and that a still board draws no frames.
+pile over the packets, hands re-fanning without spinning, throws leaving the felt - and that a still board draws no frames.
 
 ## What is next
 

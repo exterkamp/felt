@@ -58,7 +58,6 @@ export default defineConfig({
         hands: resolve(__dirname, 'demo/hands.html'),
         deck: resolve(__dirname, 'demo/deck.html'),
         shuffle: resolve(__dirname, 'demo/shuffle.html'),
-        box: resolve(__dirname, 'demo/box.html'),
         faces: resolve(__dirname, 'demo/faces.html'),
       },
     },

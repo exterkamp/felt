@@ -1,6 +1,6 @@
 import { Atlas } from '../gl/atlas.js';
 import { lensDistance } from '../gl/lens.js';
-import { DrawItem, MeshItem, Renderer } from '../gl/renderer.js';
+import { DrawItem, Renderer } from '../gl/renderer.js';
 import { Engine, EngineMember, engine as pageEngine } from '../runtime/engine.js';
 import type { LifecycleEvent } from '../runtime/lifecycle.js';
 import { PickUp, PickUpOptions } from './pick-up.js';
@@ -106,16 +106,6 @@ export interface BoardPointer {
 
 type Handler = (...args: any[]) => void;
 
-/** A mesh with a place in the draw order. */
-export interface BoardMesh extends MeshItem {
-  depth: number;
-  visible: boolean;
-  readonly serial: number;
-}
-
-let meshSerial = 1e9;
-export const nextMeshSerial = () => meshSerial++;
-
 function cssToRgba(color: string | number | undefined): [number, number, number, number] {
   if (color === undefined) return [0, 0, 0, 1];
   if (typeof color === 'number') {
@@ -191,7 +181,7 @@ export class Board implements EngineMember {
   /** When the board was made, by `performance.now()`: loading is timed from here. */
   readonly createdAt = performance.now();
 
-  private readonly items: (Node | BoardMesh)[] = [];
+  private readonly items: Node[] = [];
   private sorted = true;
   private rendering = false;
   private dirty = true;
@@ -404,21 +394,15 @@ export class Board implements EngineMember {
     this.resort();
   }
 
-  detach(item: Node | BoardMesh): void {
+  detach(item: Node): void {
     const at = this.items.indexOf(item);
     if (at >= 0) this.items.splice(at, 1);
     this.tweens.killTweensOf(item);
     this.touch();
   }
 
-  /** Puts a mesh in the draw order. */
-  addMesh(mesh: BoardMesh): void {
-    this.items.push(mesh);
-    this.resort();
-  }
-
   /** Everything on the board, back to front. */
-  get children(): readonly (Node | BoardMesh)[] {
+  get children(): readonly Node[] {
     this.sort();
     return this.items;
   }
@@ -497,7 +481,6 @@ export class Board implements EngineMember {
     this.sort();
     for (let i = this.items.length - 1; i >= 0; i--) {
       const item = this.items[i];
-      if (!(item instanceof Node)) continue;
       if (!(item.interactive || item.draggable)) continue;
       if (accept && !accept(item)) continue;
       if (item.hitTest(x, y)) return item;
@@ -715,7 +698,6 @@ export class Board implements EngineMember {
       let above: Node | undefined;
       for (let i = this.items.length - 1; i >= 0; i--) {
         const item = this.items[i];
-        if (!(item instanceof Node)) { above = undefined; continue; }
         if (!item.visible) continue;
         item.prepare();
         item.covered = above !== undefined && item.sameFootprint(above);

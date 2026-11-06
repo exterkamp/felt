@@ -27,7 +27,7 @@ fills each `<pre data-region="Title">` in its page with that region; change
 its prose in `tour.html` when the code it explains changes.
 
 The projection is written twice — `src/gl/lens.ts` and `PROJECT` in
-`src/gl/shaders.ts` — and picking/`deckCentre` depend on them agreeing.
+`src/gl/shaders.ts` — and picking depends on them agreeing.
 
 Verify visual changes in a real browser (smoke + a screenshot); the bugs this
 lineage keeps hitting are "right numbers, wrong screen".

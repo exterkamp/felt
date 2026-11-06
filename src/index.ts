@@ -1,7 +1,7 @@
 // felt: a WebGL2 engine for card games.
 //
 // Everything phaser-card-engine did, without Phaser underneath it. The core -
-// cards, stacks, hands, faces, courts, shuffles, the tuck box as numbers - is
+// cards, stacks, hands, faces, courts, shuffles - is
 // re-exported unchanged from `felt/core`, which draws nothing and runs in
 // node. Everything else here is the engine: a board, a renderer that draws
 // every card on it in one instanced call, the art painted into one atlas, and
@@ -9,7 +9,7 @@
 export * from './core/index.js';
 
 export { Board, createBoard } from './scene/board.js';
-export type { BoardOptions, BoardPointer, BoardMesh, TextStyle } from './scene/board.js';
+export type { BoardOptions, BoardPointer, TextStyle } from './scene/board.js';
 export { Node } from './scene/node.js';
 export { Sprite } from './scene/sprite.js';
 export type { SpriteOptions } from './scene/sprite.js';
@@ -54,8 +54,6 @@ export type { CardArtOptions, CourtCaches } from './art/card-art.js';
 export { courtTextureKey, renderCourt, renderCourts } from './art/court-art.js';
 export type { RenderCourtsOptions } from './art/court-art.js';
 export { courtWorkerSupported, disposeCourtWorker } from './art/court-worker.js';
-export { renderTuckBox, tuckBoxTextureKey } from './art/tuck-box-art.js';
-export type { TuckBoxArt } from './art/tuck-box-art.js';
 
 export { flickCard, simulateFlick } from './play/flick.js';
 export type { FlickOptions, FlickPath, FlickStep, Magnet } from './play/flick.js';
@@ -71,8 +69,6 @@ export { flipCard } from './play/flip.js';
 export type { FlipOptions } from './play/flip.js';
 export { RIFFLE_DEPTH, RIFFLE_HAND_DEPTH, riffleShuffle } from './play/riffle.js';
 export type { RiffleOptions } from './play/riffle.js';
-export { TuckBox, supportsTuckBox } from './play/tuck-box.js';
-export type { TuckBoxOptions } from './play/tuck-box.js';
 export { HandZone, Pile, Table, Zone, createTable } from './table/table.js';
 export type {
   Accepts, CanTake, DragOptions, FlickRelease, TableDealOptions, HandOptions, MoveCause, MoveOptions, PileOptions, SyncOptions,

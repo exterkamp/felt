@@ -101,7 +101,7 @@ console.log(`smoking ${host}`);
 await send('Page.navigate', { url: `${host}/` });
 await sleep(700);
 const tiles = JSON.parse(await evaluate(`JSON.stringify([...document.querySelectorAll('a.demo')].map(a => a.href))`));
-check(tiles.length === 17, `the home screen lists seventeen demos (${tiles.length})`);
+check(tiles.length === 16, `the home screen lists sixteen demos (${tiles.length})`);
 let reachable = 0;
 let wayBack = 0;
 let boards = 0;
@@ -527,32 +527,6 @@ check(rules === JSON.stringify({ spades: 'black', hearts: 'red', diamonds: 'red'
   'what a suit counts as does not move with what it is printed in');
 const pip = await evaluate(`(() => { const r = __felt.suitTexture('spades', 0xffffff); return !!r && r.width > 0; })()`);
 check(pip, 'a lone pip for an empty place is a real picture');
-
-// --- the box ----------------------------------------------------------------
-console.log('\nthe tuck box');
-await open('box.html', '!!window.__felt?.box?.()');
-const box = JSON.parse(await evaluate(`(async () => {
-  const b = __felt.box();
-  const spinning = b.turn; await new Promise(r => setTimeout(r, 500));
-  const turned = b.turn !== spinning;
-  await __felt.openAndDeal();
-  const cards = __felt.cards();
-  return JSON.stringify({ turned, cards: cards.length,
-    landed: cards.every(c => Math.abs(c.x - 240) < 0.01 && Math.abs(c.y - 392) < 0.01),
-    centre: b.deckCentre() });
-})()`));
-check(box.turned, 'the box turns on the spot');
-const boxBack = await evaluate(`(async () => {
-  const b = __felt.board; const ext = b.renderer.gl.getExtension('WEBGL_lose_context');
-  ext.loseContext(); await new Promise(r => setTimeout(r, 300)); ext.restoreContext();
-  await new Promise(r => setTimeout(r, 1000));
-  const c = b.snapshotCanvas(); const px = c.getContext('2d').getImageData(c.width / 2 - 40, 140, 80, 120).data;
-  let felt = 0; for (let i = 0; i < px.length; i += 4) if (Math.abs(px[i] - 0x13) < 6 && Math.abs(px[i + 1] - 0x46) < 6) felt++;
-  return felt / (px.length / 4);
-})()`);
-check(boxBack < 0.5, `and the tuck box survives a lost context too (${Math.round(boxBack * 100)}% felt where it stands)`);
-check(box.cards === 52 && box.landed, `the deck comes out as fifty-two real cards and squares up (${box.cards})`);
-check(Math.abs(box.centre.x - 240) < 4 && box.centre.y < 210, `and the block it replaced had risen out of the box (${box.centre.x.toFixed(1)}, ${box.centre.y.toFixed(1)})`);
 
 // --- throws -----------------------------------------------------------------
 console.log('\nthrowing');

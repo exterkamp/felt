@@ -16,9 +16,8 @@
 // `localLens` picks between them; the shader and these functions agree.
 //
 // This file is the only place that projection is written down in TypeScript,
-// and the vertex shader is the only other. Picking a card under a finger and
-// asking where a tuck box's deck has risen to both come through here, so the
-// answer is the same one the screen gives.
+// and the vertex shader is the only other. Picking a card under a finger comes
+// through here, so the answer is the same one the screen gives.
 
 export interface Lens {
   /** Distance from the camera to the table, in board units. Infinity is flat. */
