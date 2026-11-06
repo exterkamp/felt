@@ -168,7 +168,7 @@ check(moved === true, 'a card dragged onto another stack joins it');
 const courts = await evaluate(`(async () => { await new Promise(r => setTimeout(r, 1500));
   const art = __felt.board.services.get('card-art');
   return [...['J','Q','K']].flatMap(r => ['spades','hearts','diamonds','clubs'].map(s => [r, s]))
-    .filter(([r, s]) => [...art.assets?.keys?.() ?? []].some(k => k.endsWith('-half-' + r + '-' + s))).length; })()`);
+    .filter(([r, s]) => art.report().some(a => a.status === 'loaded' && a.key.endsWith('-half-' + r + '-' + s))).length; })()`);
 check(courts === 12, `all twelve court portraits rendered and handed to the faces (${courts})`);
 
 // Messy is settled, not rolled, and bounded by MESSY_TURN.
@@ -321,6 +321,21 @@ const swap = JSON.parse(await evaluate(`(async () => {
 })()`));
 check(swap.ready && swap.fewest === 52,
   `changing deck keeps every card on show till the new one is finished (${swap.frames} frames, never fewer than ${swap.fewest})`);
+const warm = JSON.parse(await evaluate(`(async () => {
+  const first = __felt.loadingReport().readyAt;
+  const old = __felt.board;
+  const art = old.engine.services.get('art-store');
+  const before = art.report().length;
+  __felt.newBoard();
+  const b = __felt.board; const t = performance.now();
+  while (!__felt.loadingReport().ready && performance.now() - t < 20000) await new Promise(r => setTimeout(r, 20));
+  return JSON.stringify({ first, second: performance.now() - t, sameEngine: b.engine === old.engine,
+    newCanvas: b.canvas !== old.canvas && !old.canvas.isConnected, oldDestroyed: old.isDestroyed,
+    newArt: art.report().length - before, drawn: __felt.cards().filter(c => c.revealed).length });
+})()`));
+check(warm.sameEngine && warm.newCanvas && warm.oldDestroyed, 'a board destroyed and made again runs on the same engine');
+check(warm.newArt === 0 && warm.second < warm.first / 2 && warm.drawn === 52,
+  `and starts warm: no art fetched again, ready in ${Math.round(warm.second)} ms against ${Math.round(warm.first)} cold`);
 
 // --- one stack: canned animations tapped fast ------------------------------
 console.log('\none stack');
@@ -448,7 +463,7 @@ console.log('\nfaces');
 await open('faces.html', '!!window.__felt?.cards?.().length');
 const faces = await evaluate(`(async () => { await new Promise(r => setTimeout(r, 2500));
   const art = __felt.board.services.get('card-art');
-  const keys = [...art.assets.keys()];
+  const keys = art.report().filter(a => a.status === 'loaded').map(a => a.key);
   return { half: keys.filter(k => k.includes('-half-K-')).length, full: keys.filter(k => k.includes('-full-K-')).length }; })()`);
 check(faces.half >= 1 && faces.full >= 1, `both cuts of the court are rendered for the three faces (${faces.half} half, ${faces.full} full)`);
 

@@ -372,9 +372,16 @@ function snap(plain: Record<string, number>, applied: Offset): void {
 
 const animators = new WeakMap<object, Animator>();
 
-/** The animator for anything with tweens - a board, or `{ tweens }` in a test. */
-export function animatorOf(host: { readonly tweens: Tweens }): Animator {
+/** The animator for anything with tweens - a board, or `{ tweens }` in a test. One each. */
+export function animatorOf(host: { readonly tweens: Tweens; readonly engine?: { readonly clock: { now(): number } } }): Animator {
   let animator = animators.get(host);
-  if (!animator) animators.set(host, (animator = new Animator(host.tweens)));
+  if (!animator) {
+    animator = new Animator(host.tweens);
+    // Debounced on the engine's clock where there is one, so a test or a
+    // replay that turns the clock by hand debounces the same way.
+    const clock = host.engine?.clock;
+    if (clock) animator.now = () => clock.now();
+    animators.set(host, animator);
+  }
   return animator;
 }

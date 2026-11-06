@@ -3,6 +3,7 @@ import {
   CardSprite, DECK_THEMES, DeckTheme, LoadingStage, SUITS, RANKS, buildDeck, cardsReady, createBoard, loadingReport,
 } from 'felt';
 import { expose } from './kit';
+import { fpsMeter } from 'felt';
 
 // The engine starting up, made visible: one bar per thing it waits for, and
 // the moment the first card can be drawn.
@@ -30,37 +31,61 @@ const note = (text: string) => {
 };
 window.addEventListener('error', (event) => note(`error: ${event.message}`));
 
-const board = createBoard({
+const makeBoard = () => createBoard({
   parent: 'board', width: WIDTH, height: HEIGHT, backgroundColor: '#13463a', waitForArt: !atOnce,
 });
+let board = makeBoard();
 const t0 = board.createdAt;
 const at = () => `${(performance.now() - t0).toFixed(0).padStart(6)} ms`;
 note(`${at()}  board made, ${t0.toFixed(0)} ms after navigation${atOnce ? ' (drawing cards at once, waitForArt: false)' : ''}`);
 
 // The whole deck, one suit to a row, face up - so ready means every face.
 let theme: DeckTheme = 'press';
-const cards: CardSprite[] = [];
+let cards: CardSprite[] = [];
 const rowHeight = (HEIGHT - 2 * MARGIN) / 4;
 const step = (WIDTH - 2 * MARGIN - CARD) / (RANKS.length - 1);
 const deck = buildDeck();
-SUITS.forEach((suit, row) => {
-  RANKS.forEach((rank, i) => {
-    const card = new CardSprite(board, { ...deck.find((c) => c.suit === suit && c.rank === rank)!, faceUp: true },
-      { width: CARD, theme });
-    card.setPosition(MARGIN + CARD / 2 + i * step, MARGIN + rowHeight * (row + 0.5));
-    card.depth = row * 20 + i;
-    cards.push(card);
-  });
-});
-note(`${at()}  52 cards made, none drawn yet`);
 
 // Every frame drawn, for the smoke test: how many cards it drew, and whether
 // the engine said it was ready by then.
-const frames: { at: number; instances: number; ready: boolean }[] = [];
-board.on('render', () => {
-  frames.push({ at: performance.now() - t0, instances: board.renderer.instanceCount,
-    ready: loadingReport(board).ready });
-});
+let frames: { at: number; instances: number; ready: boolean }[] = [];
+
+function deal(): void {
+  cards = [];
+  SUITS.forEach((suit, row) => {
+    RANKS.forEach((rank, i) => {
+      const card = new CardSprite(board, { ...deck.find((c) => c.suit === suit && c.rank === rank)!, faceUp: true },
+        { width: CARD, theme });
+      card.setPosition(MARGIN + CARD / 2 + i * step, MARGIN + rowHeight * (row + 0.5));
+      card.depth = row * 20 + i;
+      cards.push(card);
+    });
+  });
+  frames = [];
+  const b = board;
+  b.on('render', () => {
+    frames.push({ at: performance.now() - b.createdAt, instances: b.renderer.instanceCount,
+      ready: loadingReport(b).ready });
+  });
+}
+deal();
+note(`${at()}  52 cards made, none drawn yet`);
+
+/**
+ * The board thrown away and a new one made: a new canvas, a new GL context,
+ * an empty atlas - but the same engine, whose art (fonts, glyphs, portraits)
+ * is all still there. What a game does going from one screen to the next.
+ */
+function newBoard(): void {
+  board.destroy();
+  board = makeBoard();
+  deal();
+  const made = board.createdAt;
+  note(`${at()}  board destroyed and a new one made on the same engine`);
+  void cardsReady(board).then(() => {
+    note(`${at()}  new board ready in ${(performance.now() - made).toFixed(0)} ms: its art was the engine's already`);
+  });
+}
 
 // --- the bars ---------------------------------------------------------------
 
@@ -137,6 +162,7 @@ void cardsReady(board).then(() => {
 // --- the buttons ------------------------------------------------------------
 
 document.getElementById('reload')!.addEventListener('click', () => location.reload());
+document.getElementById('again')!.addEventListener('click', () => newBoard());
 
 document.getElementById('restyle')!.addEventListener('click', () => {
   theme = DECK_THEMES[(DECK_THEMES.indexOf(theme) + 1) % DECK_THEMES.length];
@@ -168,4 +194,7 @@ mode.addEventListener('click', () => {
   location.search = atOnce ? '' : '?draw=at-once';
 });
 
-expose({ board, cards: () => cards, frames: () => frames, loadingReport: () => loadingReport(board) });
+// Getters, since the board can be replaced.
+expose({ cards: () => cards, frames: () => frames, loadingReport: () => loadingReport(board), newBoard });
+Object.defineProperty((window as unknown as { __felt: object }).__felt, 'board', { get: () => board });
+fpsMeter(() => board);

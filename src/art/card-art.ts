@@ -1,5 +1,7 @@
 import type { Painter, Region } from '../gl/atlas.js';
 import type { Board } from '../scene/board.js';
+import { Engine, serviceOf } from '../runtime/engine.js';
+import { disposeCourtWorker } from './court-worker.js';
 import {
   DEFAULT_DECK_THEME, DeckTheme, cardAssetBase, colorCss, deckThemePath, fontsReady,
 } from '../core/index.js';
@@ -80,30 +82,49 @@ export const FONT_ASSET = 'font:faces';
 export const suitAssetKey = (suit: string) => `suit:${suit}`;
 export const backAssetKey = (theme: DeckTheme) => `back:${theme}`;
 
-/** The board's art: loaded images, and the regions waiting on them. */
-export class CardArt {
+/** What the store tells each board's art about. */
+interface StoreListener {
+  provided(key: string): void;
+  failed(key: string): void;
+}
+
+/** The court renderer's caches, kept with the rest of the page's art. */
+export interface CourtCaches {
+  /** Fetched SVG text, by path. */
+  sources: Map<string, Promise<string>>;
+  /** Rasterised court pages, newest last. */
+  pages: Map<string, Promise<ImageBitmap | HTMLImageElement>>;
+  /** Portraits being rendered right now, by key. */
+  inFlight: Map<string, Promise<string>>;
+}
+
+/**
+ * The page's art: every CPU-side picture cards are painted from, and where
+ * each one is - arriving, here, or never coming.
+ *
+ * It belongs to the engine, not a board, because none of it touches a GPU:
+ * glyphs, backs, portraits, their halvings and the rastered rank text are
+ * pixels in CPU canvases, as good for the next board as for this one. A
+ * board made for the next screen of a game, or a second board on the page,
+ * paints its first deck from art already here.
+ */
+export class ArtStore {
   private readonly assets = new Map<string, Source>();
   private readonly loading = new Map<string, Promise<void>>();
-  private readonly waiting = new Map<string, Set<Dependent>>();
   private readonly inked = new Map<string, Source>();
-  /** Regions owed a repaint, done once each just before the next frame. */
-  private readonly owed = new Set<Dependent>();
   /** Art something has started getting, and has not got yet. */
   private readonly expected = new Set<string>();
   /** Art that was asked for and will not come: a 404, a court that threw. */
   private readonly failed = new Set<string>();
   /** Every key ever expected, in the order asked, for progress reports. */
   private readonly known = new Set<string>();
-  private readonly painted = new WeakMap<Region, Dependent>();
-  /** Goes up whenever anything that `finished` answers from changes. */
+  private readonly listeners = new Set<StoreListener>();
+  readonly courts: CourtCaches = { sources: new Map(), pages: new Map(), inFlight: new Map() };
+  /** Goes up whenever where any art is changes. */
   version = 0;
 
-  constructor(readonly board: Board) {
-    // Batched: a face waiting on the font and on its court, both of which
-    // land in the same second, is painted again once rather than twice - and
-    // twelve courts arriving in twelve tasks cost twelve repaints per face
-    // waiting on each, not one per frame per arrival.
-    board.beforeRender(() => this.flush());
+  constructor() {
+    if (typeof document === 'undefined') return;
     this.expect(FONT_ASSET, fontsReady().then(() => {
       const token = document.createElement('canvas');
       token.width = token.height = 1;
@@ -111,13 +132,13 @@ export class CardArt {
     }));
   }
 
-  static of(board: Board): CardArt {
-    let art = board.services.get('card-art') as CardArt | undefined;
-    if (!art) {
-      art = new CardArt(board);
-      board.services.set('card-art', art);
-    }
-    return art;
+  static of(owner: Engine): ArtStore {
+    return serviceOf(owner, 'art-store', () => new ArtStore());
+  }
+
+  listen(listener: StoreListener): () => void {
+    this.listeners.add(listener);
+    return () => { this.listeners.delete(listener); };
   }
 
   get(key: string): Source | undefined {
@@ -126,6 +147,11 @@ export class CardArt {
 
   has(key: string): boolean {
     return this.assets.has(key);
+  }
+
+  /** Whether a piece of art is on its way and has not arrived. */
+  pending(key: string): boolean {
+    return this.expected.has(key);
   }
 
   /**
@@ -149,7 +175,7 @@ export class CardArt {
     this.expected.delete(key);
     this.failed.add(key);
     this.version++;
-    this.board.touch();
+    for (const listener of [...this.listeners]) listener.failed(key);
   }
 
   /** Where a piece of art is, or undefined if nothing ever asked for it. */
@@ -165,60 +191,14 @@ export class CardArt {
     return [...this.known].map((key) => ({ key, kind: artKind(key), status: this.status(key)! }));
   }
 
-  /**
-   * Whether a region is finished: painted, with nothing it asked for still
-   * on its way. Art that failed, or that nobody is getting, does not hold it.
-   * A region this never painted (a graphic, a label) is finished.
-   */
-  finished(region: Region): boolean {
-    const dependent = this.painted.get(region);
-    if (!dependent) return true;
-    if (dependent.key !== region.key) return true;
-    if (this.owed.has(dependent)) return false;
-    for (const key of dependent.missing) if (this.expected.has(key)) return false;
-    return true;
-  }
-
-  /** Puts an asset in, and repaints everything that was waiting for it. */
+  /** Puts an asset in, and tells every board's art that was waiting for it. */
   provide(key: string, source: Source): void {
     this.assets.set(key, source);
     this.known.add(key);
     this.expected.delete(key);
     this.failed.delete(key);
     this.version++;
-    const waiting = this.waiting.get(key);
-    if (!waiting) return;
-    this.waiting.delete(key);
-    for (const dependent of waiting) this.owed.add(dependent);
-    this.board.touch();
-  }
-
-  /**
-   * Repaints what is owed one: everything on screen now, and of the rest as
-   * much as fits in a few milliseconds, the remainder next frame.
-   *
-   * Without the split, a deck's twelve portraits landing repainted every
-   * warmed cell waiting on them in one frame - most of them cards nobody was
-   * looking at - and changing deck cost a frame of nearly a second.
-   */
-  flush(): void {
-    if (!this.owed.size) return;
-    const recent = this.board.frames - 2;
-    const deadline = performance.now() + OFFSCREEN_BUDGET_MS;
-    for (const dependent of [...this.owed]) {
-      const region = dependent.region;
-      // A region given back to the atlas and reused since is not ours to paint.
-      if (region.key !== dependent.key) {
-        this.owed.delete(dependent);
-        continue;
-      }
-      const onScreen = (region.shownAt ?? -Infinity) >= recent;
-      if (!onScreen && performance.now() > deadline) continue;
-      this.owed.delete(dependent);
-      this.repaint(dependent);
-    }
-    // Something left: come back next frame for it.
-    if (this.owed.size) this.board.touch();
+    for (const listener of [...this.listeners]) listener.provided(key);
   }
 
   /** Loads an image by URL under a key, once. */
@@ -253,39 +233,9 @@ export class CardArt {
     return pending;
   }
 
-  /**
-   * Paints a region with a painter that looks things up, and registers it to
-   * be painted again for anything it asked for and did not get.
-   */
-  paintTracked(region: Region, paint: (art: ArtLookup) => Painter): void {
-    const dependent: Dependent = { region, key: region.key, paint, missing: [] };
-    this.painted.set(region, dependent);
-    this.repaint(dependent);
-  }
-
-  private repaint(dependent: Dependent): void {
-    if (dependent.region.key !== dependent.key) return;
-    const missing: string[] = [];
-    const lookup: ArtLookup = {
-      get: (key) => {
-        const found = this.assets.get(key);
-        if (!found) missing.push(key);
-        return found;
-      },
-    };
-    this.board.atlas.paint(dependent.region, dependent.paint(lookup), () => this.repaint(dependent));
-    dependent.missing = missing;
-    this.version++;
-    for (const key of missing) {
-      let set = this.waiting.get(key);
-      if (!set) this.waiting.set(key, (set = new Set()));
-      set.add(dependent);
-    }
-  }
-
   private readonly mips = new WeakMap<object, Source[]>();
 
-  private mipFor(source: Source, width: number, height: number): Source {
+  mipFor(source: Source, width: number, height: number): Source {
     let chain = this.mips.get(source);
     if (!chain) this.mips.set(source, (chain = [source]));
     // Only as deep as this draw needs: a portrait shown at card size wants
@@ -395,6 +345,155 @@ export class CardArt {
     canvas = out;
     this.inked.set(key, canvas);
     return canvas;
+  }
+
+  /** Lets the court worker go with the engine. The pictures go with the store. */
+  dispose(): void {
+    disposeCourtWorker();
+    this.listeners.clear();
+  }
+}
+
+/**
+ * One board's side of the art: which of its atlas regions were painted from
+ * what, and which owe a repaint now that something they were missing has
+ * arrived. The pictures themselves are the engine's (`ArtStore`).
+ */
+export class CardArt {
+  private readonly waiting = new Map<string, Set<Dependent>>();
+  /** Regions owed a repaint, done once each just before the next frame. */
+  private readonly owed = new Set<Dependent>();
+  private readonly painted = new WeakMap<Region, Dependent>();
+  private own = 0;
+  readonly store: ArtStore;
+
+  constructor(readonly board: Board) {
+    this.store = ArtStore.of(board.engine);
+    // Batched: a face waiting on the font and on its court, both of which
+    // land in the same second, is painted again once rather than twice - and
+    // twelve courts arriving in twelve tasks cost twelve repaints per face
+    // waiting on each, not one per frame per arrival.
+    board.beforeRender(() => this.flush());
+    const unlisten = this.store.listen({
+      provided: (key) => {
+        const waiting = this.waiting.get(key);
+        if (!waiting) return;
+        this.waiting.delete(key);
+        for (const dependent of waiting) this.owed.add(dependent);
+        this.board.touch();
+      },
+      failed: () => this.board.touch(),
+    });
+    board.on('destroy', unlisten);
+  }
+
+  static of(board: Board): CardArt {
+    return serviceOf(board, 'card-art', () => new CardArt(board));
+  }
+
+  /** Goes up whenever anything that `finished` answers from changes. */
+  get version(): number {
+    return this.store.version + this.own;
+  }
+
+  get(key: string): Source | undefined { return this.store.get(key); }
+  has(key: string): boolean { return this.store.has(key); }
+  expect(key: string, job: Promise<unknown>): void { this.store.expect(key, job); }
+  fail(key: string): void { this.store.fail(key); }
+  status(key: string): ArtStatus | undefined { return this.store.status(key); }
+  report(): { key: string; kind: ArtKind; status: ArtStatus }[] { return this.store.report(); }
+  provide(key: string, source: Source): void { this.store.provide(key, source); }
+  load(key: string, url: string, size?: { width: number; height: number }): Promise<void> {
+    return this.store.load(key, url, size);
+  }
+  blit(pen: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, source: Source,
+    x: number, y: number, w: number, h: number): void {
+    this.store.blit(pen, source, x, y, w, h);
+  }
+  text(pen: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, text: string,
+    font: string, size: number, color: string, x: number, y: number): number {
+    return this.store.text(pen, text, font, size, color, x, y);
+  }
+  inkedSuit(suit: string, ink: number, lookup: ArtLookup): Source | undefined {
+    return this.store.inkedSuit(suit, ink, lookup);
+  }
+
+  /**
+   * Whether a region is finished: painted, with nothing it asked for still
+   * on its way. Art that failed, or that nobody is getting, does not hold it.
+   * A region this never painted (a graphic, a label) is finished.
+   */
+  finished(region: Region): boolean {
+    const dependent = this.painted.get(region);
+    if (!dependent) return true;
+    if (dependent.key !== region.key) return true;
+    if (this.owed.has(dependent)) return false;
+    for (const key of dependent.missing) if (this.store.pending(key)) return false;
+    return true;
+  }
+
+  /**
+   * Repaints what is owed one: everything on screen now, and of the rest as
+   * much as fits in a few milliseconds, the remainder next frame.
+   *
+   * Without the split, a deck's twelve portraits landing repainted every
+   * warmed cell waiting on them in one frame - most of them cards nobody was
+   * looking at - and changing deck cost a frame of nearly a second.
+   */
+  flush(): void {
+    if (!this.owed.size) return;
+    const recent = this.board.frames - 2;
+    const deadline = performance.now() + OFFSCREEN_BUDGET_MS;
+    for (const dependent of [...this.owed]) {
+      const region = dependent.region;
+      // A region given back to the atlas and reused since is not ours to paint.
+      if (region.key !== dependent.key) {
+        this.owed.delete(dependent);
+        this.own++;
+        continue;
+      }
+      const onScreen = (region.shownAt ?? -Infinity) >= recent;
+      if (!onScreen && performance.now() > deadline) continue;
+      this.owed.delete(dependent);
+      this.repaint(dependent);
+    }
+    // Something left: come back next frame for it.
+    if (this.owed.size) this.board.touch();
+  }
+
+  /**
+   * Paints a region with a painter that looks things up, and registers it to
+   * be painted again for anything it asked for and did not get.
+   */
+  paintTracked(region: Region, paint: (art: ArtLookup) => Painter): void {
+    const dependent: Dependent = { region, key: region.key, paint, missing: [] };
+    this.painted.set(region, dependent);
+    this.repaint(dependent);
+  }
+
+  private repaint(dependent: Dependent): void {
+    if (dependent.region.key !== dependent.key) return;
+    const missing: string[] = [];
+    const lookup: ArtLookup = {
+      get: (key) => {
+        const found = this.store.get(key);
+        if (!found) missing.push(key);
+        return found;
+      },
+    };
+    this.board.atlas.paint(dependent.region, dependent.paint(lookup), () => this.repaint(dependent));
+    dependent.missing = missing;
+    this.own++;
+    for (const key of missing) {
+      // Arrived between being asked for and now: owed at once, not waited for.
+      if (this.store.has(key)) {
+        this.owed.add(dependent);
+        continue;
+      }
+      let set = this.waiting.get(key);
+      if (!set) this.waiting.set(key, (set = new Set()));
+      set.add(dependent);
+    }
   }
 }
 

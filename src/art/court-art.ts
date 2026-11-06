@@ -15,7 +15,7 @@ import {
   partBackgroundPixels,
 } from '../core/index.js';
 import type { Board } from '../scene/board.js';
-import { CPU, CardArt } from './card-art.js';
+import { CPU, CardArt, CourtCaches } from './card-art.js';
 import { courtWorkerPool, courtSlots } from './court-worker.js';
 
 // Court portraits, rendered while the game is running.
@@ -38,10 +38,9 @@ import { courtWorkerPool, courtSlots } from './court-worker.js';
 // the recolor is only 12ms of it. The rasterising is the cost, so the same
 // palette at two sizes costs twice.
 
-/** Fetched once per file and kept, so changing palette never refetches. */
-const sources = new Map<string, Promise<string>>();
-
-function sourceSvg(rank: CourtRank, suit: string): Promise<string> {
+/** Fetched once per file and kept (by the engine's art), so changing palette never refetches. */
+function sourceSvg(caches: CourtCaches, rank: CourtRank, suit: string): Promise<string> {
+  const sources = caches.sources;
   const path = courtSourcePath(rank, suit);
   let pending = sources.get(path);
   if (!pending) {
@@ -86,8 +85,9 @@ export async function renderCourt(
   if (art.has(key)) return key;
   // One render per portrait however many ask: a deck's sheet asks for each
   // court as it paints it, and renderCourts may be asking for the same ones.
-  let flying = inFlight.get(board);
-  if (!flying) inFlight.set(board, (flying = new Map()));
+  // Kept with the engine's art, not the board: a court a board started and
+  // did not live to see is still the next board's.
+  const flying = art.store.courts.inFlight;
   const pending = flying.get(key);
   if (pending) return pending;
   const job = renderCourtOnce(board, key, rank, suit, palette, width, cut);
@@ -97,7 +97,6 @@ export async function renderCourt(
   return job.finally(() => flying.delete(key));
 }
 
-const inFlight = new WeakMap<Board, Map<string, Promise<string>>>();
 
 async function renderCourtOnce(
   board: Board, key: string, rank: CourtRank, suit: string,
@@ -113,7 +112,7 @@ async function renderCourtOnce(
   if (!courtWorkerPool()) return paintCourt(board, key, rank, suit, palette, width, cut);
   const release = await courtSlots().take();
   try {
-    if (board.isDestroyed) return key;
+    if (board.engine.destroyed) return key;
     if (art.has(key)) return key;
     return await paintCourt(board, key, rank, suit, palette, width, cut);
   } finally {
@@ -123,8 +122,7 @@ async function renderCourtOnce(
 
 type Page = ImageBitmap | HTMLImageElement;
 
-/** Rasterised pages, by palette, court and size. A few decks' worth. */
-const pages = new Map<string, Promise<Page>>();
+/** Rasterised pages, by palette, court and size, are kept: a few decks' worth. */
 const PAGES_KEPT = 48;
 
 /**
@@ -136,7 +134,9 @@ const PAGES_KEPT = 48;
  * and rasterised it on its own: a page drawing all three faces paid for every
  * court twice. Measured, that was most of what changing deck cost.
  */
-function courtPage(rank: CourtRank, suit: string, palette: CourtPalette, width: number): Promise<Page> {
+function courtPage(caches: CourtCaches, rank: CourtRank, suit: string, palette: CourtPalette,
+  width: number): Promise<Page> {
+  const pages = caches.pages;
   const size = courtSourceSize(width);
   const key = `${courtTextureKey(palette, rank, suit, width)}-${size.width}x${size.height}`;
   let pending = pages.get(key);
@@ -146,7 +146,7 @@ function courtPage(rank: CourtRank, suit: string, palette: CourtPalette, width: 
     return pending;
   }
   pending = (async () => {
-    const svg = prepareCourt(await sourceSvg(rank, suit), palette);
+    const svg = prepareCourt(await sourceSvg(caches, rank, suit), palette);
     const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
     try {
       const image = new Image();
@@ -176,7 +176,7 @@ async function paintCourt(
   palette: CourtPalette, width: number, cut: CourtCut,
 ): Promise<string> {
   {
-    const image = await courtPage(rank, suit, palette, width);
+    const image = await courtPage(CardArt.of(board).store.courts, rank, suit, palette, width);
 
     // Off the main thread where the browser allows it. Anything that goes
     // wrong over there - no worker, a dead one, a message that would not
@@ -185,11 +185,11 @@ async function paintCourt(
     const pool = courtWorkerPool();
     if (pool) {
       try {
-        if (board.isDestroyed) return key;
+        if (board.engine.destroyed) return key;
         await paintInWorker(pool, image, rank, suit, palette, width, cut, board, key);
         return key;
       } catch {
-        if (board.isDestroyed) return key;
+        if (board.engine.destroyed) return key;
         if (CardArt.of(board).has(key)) return key;
       }
     }
@@ -238,7 +238,7 @@ async function paintCourt(
     }
 
     const art = CardArt.of(board);
-    if (!board.isDestroyed && !art.has(key)) art.provide(key, out);
+    if (!board.engine.destroyed && !art.has(key)) art.provide(key, out);
     return key;
   }
 }
@@ -283,7 +283,7 @@ async function paintInWorker(
   });
   try {
     const art = CardArt.of(board);
-    if (board.isDestroyed || art.has(key)) return;
+    if (board.engine.destroyed || art.has(key)) return;
     const out = document.createElement('canvas');
     out.width = outWidth;
     out.height = outHeight;
@@ -373,6 +373,6 @@ export async function renderCourts(
   } finally {
     // A board torn down mid-paint has no use for the worker; let it go now
     // rather than at the idle timeout, unless something else is using it.
-    if (board.isDestroyed) courtWorkerPool()?.disposeIfIdle();
+    if (board.engine.destroyed) courtWorkerPool()?.disposeIfIdle();
   }
 }

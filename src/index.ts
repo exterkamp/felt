@@ -15,6 +15,12 @@ export { Sprite } from './scene/sprite.js';
 export type { SpriteOptions } from './scene/sprite.js';
 export { Tween, Tweens } from './scene/tweens.js';
 export { fpsMeter } from './scene/fps.js';
+export { Engine, createEngine, engine, serviceOf } from './runtime/engine.js';
+export type { EngineEvent, EngineMember, EngineOptions } from './runtime/engine.js';
+export { ManualClock, RafClock } from './runtime/clock.js';
+export type { Clock } from './runtime/clock.js';
+export { Disposables } from './runtime/disposables.js';
+export type { Dispose } from './runtime/disposables.js';
 export { PageLifecycle } from './runtime/lifecycle.js';
 export type { LifecycleEvent, LifecycleHost } from './runtime/lifecycle.js';
 export { CONTEXT_RESTORE_WAIT_MS } from './scene/board.js';
@@ -35,9 +41,9 @@ export type { ArtKind, ArtStatus } from './art/card-art.js';
 export { BackSheet, CardSheets, FaceSheet, resolveStyle } from './art/card-sheets.js';
 export type { CardStyle, ResolvedStyle } from './art/card-sheets.js';
 export {
-  CardArt, STANDARD_SUIT_ART, loadCardArt, preloadCardArt, suitTexture, ensureArt,
+  ArtStore, CardArt, STANDARD_SUIT_ART, loadCardArt, preloadCardArt, suitTexture, ensureArt,
 } from './art/card-art.js';
-export type { CardArtOptions } from './art/card-art.js';
+export type { CardArtOptions, CourtCaches } from './art/card-art.js';
 export { courtTextureKey, renderCourt, renderCourts } from './art/court-art.js';
 export type { RenderCourtsOptions } from './art/court-art.js';
 export { courtWorkerSupported, disposeCourtWorker } from './art/court-worker.js';

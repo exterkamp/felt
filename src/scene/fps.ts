@@ -17,7 +17,13 @@ export interface FpsMeter {
   destroy(): void;
 }
 
-export function fpsMeter(board: Board, parent: HTMLElement = document.body): FpsMeter {
+/**
+ * Pass a board, or a function answering the current one for a page that
+ * replaces its board: the meter follows it to the new one.
+ */
+export function fpsMeter(source: Board | (() => Board), parent: HTMLElement = document.body): FpsMeter {
+  const current = typeof source === 'function' ? source : () => source;
+  let board = current();
   const element = document.createElement('div');
   element.className = 'felt-fps';
   Object.assign(element.style, {
@@ -41,6 +47,12 @@ export function fpsMeter(board: Board, parent: HTMLElement = document.body): Fps
 
   const paint = () => {
     const now = performance.now();
+    const next = current();
+    if (next !== board) {
+      board.off('render', onRender);
+      board = next;
+      board.on('render', onRender);
+    }
     while (frames.length && frames[0] < now - 1000) {
       frames.shift();
       work.shift();
@@ -65,6 +77,7 @@ export function fpsMeter(board: Board, parent: HTMLElement = document.body): Fps
     board.off('render', onRender);
     element.remove();
   };
-  board.once('destroy', destroy);
+  // A fixed board takes its meter with it; a followed one may be replaced.
+  if (typeof source !== 'function') board.once('destroy', destroy);
   return { element, destroy };
 }

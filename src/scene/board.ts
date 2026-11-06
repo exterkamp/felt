@@ -1,7 +1,8 @@
 import { Atlas } from '../gl/atlas.js';
 import { lensDistance } from '../gl/lens.js';
 import { DrawItem, MeshItem, Renderer } from '../gl/renderer.js';
-import { LifecycleEvent, PageLifecycle } from '../runtime/lifecycle.js';
+import { Engine, EngineMember, engine as pageEngine } from '../runtime/engine.js';
+import type { LifecycleEvent } from '../runtime/lifecycle.js';
 import { Node } from './node.js';
 import { Sprite, SpriteOptions } from './sprite.js';
 import { Tweens } from './tweens.js';
@@ -53,10 +54,10 @@ export interface BoardOptions {
    */
   waitForArt?: boolean;
   /**
-   * The page lifecycle to follow. The engine passes its own; a board made
-   * on its own makes one, and lets it go when destroyed.
+   * The engine whose loop, clock and lifecycle it runs on, and whose art
+   * it shares. Default: the page's (`engine()`).
    */
-  lifecycle?: PageLifecycle;
+  engine?: Engine;
 }
 
 /**
@@ -110,7 +111,7 @@ function cssToRgba(color: string | number | undefined): [number, number, number,
   return [parts[0] / 255, parts[1] / 255, parts[2] / 255, parts[3] ?? 1];
 }
 
-export class Board {
+export class Board implements EngineMember {
   /** The canvas it draws into. A new one if the old one's context died. */
   get canvas(): HTMLCanvasElement { return this._canvas; }
   /** The renderer on that canvas. Replaced along with it. */
@@ -118,12 +119,10 @@ export class Board {
   private _canvas: HTMLCanvasElement;
   private _renderer: Renderer;
   private readonly transparent: boolean;
-  private readonly lifecycle: PageLifecycle;
-  private readonly ownsLifecycle: boolean;
+  /** Whose loop it runs on. */
+  readonly engine: Engine;
   private unlistenCanvas: () => void = () => {};
   private watchdog: ReturnType<typeof setTimeout> | undefined;
-  /** Whether the page is hidden, frozen or cached: no frames until it is back. */
-  private suspended = false;
   /** Times a dead context was replaced with a new canvas. */
   rebuilds = 0;
   /** Times the page came back and the board drew itself again unasked. */
@@ -150,8 +149,6 @@ export class Board {
   private sorted = true;
   private rendering = false;
   private dirty = true;
-  private frameRequest = 0;
-  private last = 0;
   private time = 0;
   private awake = 0;
   private destroyedFlag = false;
@@ -195,10 +192,8 @@ export class Board {
     this._renderer = new Renderer(canvas, this.atlas, { transparent: this.transparent });
     this.tweens.onWake = () => this.wake();
 
-    this.ownsLifecycle = !options.lifecycle;
-    this.lifecycle = options.lifecycle ?? new PageLifecycle();
-    this.suspended = !this.lifecycle.active;
-    this.cleanup.push(this.lifecycle.on((event) => this.onLifecycle(event)));
+    this.engine = options.engine ?? pageEngine();
+    this.cleanup.push(this.engine.add(this));
 
     this.fit();
     if (typeof ResizeObserver !== 'undefined') {
@@ -230,19 +225,12 @@ export class Board {
    * canvas's pixels away while it was hidden, frozen or cached. So coming
    * back always draws, after checking the GPU is still there.
    */
-  private onLifecycle(event: LifecycleEvent): void {
+  lifecycle(event: LifecycleEvent): void {
     if (this.destroyedFlag) return;
-    if (event.type === 'suspend') {
-      this.suspended = true;
-      if (this.frameRequest) cancelAnimationFrame(this.frameRequest);
-      this.frameRequest = 0;
-      return;
-    }
     if (event.type === 'resume') {
-      this.suspended = false;
+      // The engine drops the time it was away and wakes; the board makes
+      // sure that frame draws, and draws onto a live context.
       this.resumes++;
-      // The time it was away is not time anything should have moved for.
-      this.last = 0;
       this.fit();
       if (this.renderer.lost) this.armWatchdog();
       this.dirty = true;
@@ -262,7 +250,7 @@ export class Board {
       this.watchdog = undefined;
       if (this.destroyedFlag || !this.renderer.lost) return;
       // Hidden, the browser will not give it back anyway; try again on return.
-      if (this.suspended) return;
+      if (this.engine.suspended) return;
       this.rebuild();
     }, CONTEXT_RESTORE_WAIT_MS);
   }
@@ -514,7 +502,7 @@ export class Board {
       if (this.destroyedFlag) return;
       event.preventDefault();
       this.contextLosses++;
-      if (!this.suspended) this.armWatchdog();
+      if (!this.engine.suspended) this.armWatchdog();
     };
     const restored = () => {
       if (this.destroyedFlag) return;
@@ -601,16 +589,14 @@ export class Board {
   }
 
   private wake(): void {
-    if (this.frameRequest || this.destroyedFlag || this.suspended) return;
-    this.frameRequest = requestAnimationFrame((t) => this.tick(t));
+    if (this.destroyedFlag) return;
+    this.engine.wake();
   }
 
-  private tick(now: number): void {
-    this.frameRequest = 0;
-    if (this.destroyedFlag) return;
+  /** One frame, run by the engine's loop. Answers whether it wants another. */
+  frame(delta: number): boolean {
+    if (this.destroyedFlag) return false;
     const started = performance.now();
-    const delta = this.last ? Math.min(100, now - this.last) : 16;
-    this.last = now;
     this.time += delta;
 
     const updating = (this.handlers.get('update')?.size ?? 0) > 0;
@@ -625,13 +611,7 @@ export class Board {
       this.render();
     }
     this.frameWork = performance.now() - started;
-    if (updating || tweening || this.awake > 0 || this.dirty) {
-      this.wake();
-    } else {
-      // Asleep. The next touch() wakes it, and the first frame after a
-      // sleep should not see the whole nap as one enormous delta.
-      this.last = 0;
-    }
+    return updating || tweening || this.awake > 0 || this.dirty;
   }
 
   /** Draws now, whatever the loop thinks. */
@@ -695,12 +675,10 @@ export class Board {
   destroy(): void {
     if (this.destroyedFlag) return;
     this.destroyedFlag = true;
-    if (this.frameRequest) cancelAnimationFrame(this.frameRequest);
     this.resizeObserver?.disconnect();
     clearTimeout(this.watchdog);
     this.unlistenCanvas();
     for (const fn of this.cleanup) fn();
-    if (this.ownsLifecycle) this.lifecycle.destroy();
     this.emit('destroy');
     this.handlers.clear();
     this.renderer.destroy();
