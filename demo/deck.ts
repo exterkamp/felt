@@ -23,7 +23,7 @@ import {
   Board, CardSprite, Node, orderStack, loadCardArt, renderCourt, suitTexture,
 } from 'felt';
 import { showCode } from './code';
-import { button, expose, standalone } from './kit';
+import { button, expose, label, standalone } from './kit';
 import { defineScene } from 'felt';
 
 // A scene: run on its own page (standalone, below) or as one screen of the
@@ -280,8 +280,7 @@ export const scene = defineScene({
       }
 
       private caption(rank: Rank): void {
-        this.root.push(this.board.text(rank === '10' ? 'Ten' : rank,
-          { font: DISPLAY_FONT, size: 22, weight: '700', color: '#fdfdfd' }, { x: 240, y: 44 }));
+        this.root.push(label(this.board, 240, 44, rank === '10' ? 'Ten' : rank, '#fdfdfd', 22, DISPLAY_FONT, '700'));
         this.label(240, 70,
           isCourtRank(rank) ? 'a court: its colors come from the palette, not the suit'
             : 'a pip, drawn in the suit’s own ink', '#7f9f88');
@@ -294,7 +293,7 @@ export const scene = defineScene({
       }
 
       private label(x: number, y: number, text: string, color: string): void {
-        this.root.push(this.board.text(text, { font: BODY_FONT, size: 10, color }, { x, y }));
+        this.root.push(label(this.board, x, y, text, color, 10, BODY_FONT));
       }
 
       // --- what the cards are made of ----------------------------------------

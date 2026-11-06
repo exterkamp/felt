@@ -3,7 +3,7 @@ import {
   CARD_HEIGHT, Zone, cardRect, createTable, handBounds, handPositions, riffleShuffle, shuffledDeck, stackPositions,
 } from 'felt';
 import { showCode } from './code';
-import { button, expose, label, standalone } from './kit';
+import { button, expose, label, slot, standalone } from './kit';
 import { defineScene } from 'felt';
 
 // A scene: run on its own page (standalone, below) or as one screen of the
@@ -40,13 +40,7 @@ export const scene = defineScene({
     function outline(places: readonly { x: number; y: number; angle?: number }[]): void {
       const rect = cardRect({ x: 0, y: 0 });
       for (const at of places) {
-        board.graphic(rect.width, rect.height, (pen, w, h) => {
-          pen.strokeStyle = 'rgba(207, 234, 208, 0.18)';
-          pen.lineWidth = 1.5;
-          pen.beginPath();
-          pen.roundRect(0.75, 0.75, w - 1.5, h - 1.5, 5);
-          pen.stroke();
-        }, { key: 'holdem-slot', x: at.x, y: at.y, angle: at.angle ?? 0, depth: 0 });
+        slot(board, at.x, at.y, 0, rect.width, rect.height, 'rgba(207, 234, 208, 0.18)', at.angle ?? 0);
       }
     }
 

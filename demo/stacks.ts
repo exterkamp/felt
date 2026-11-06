@@ -1,10 +1,10 @@
 import './serve';
 import {
-  CARD_HEIGHT, CARD_WIDTH, DEFAULT_DECK_THEME, DISPLAY_FONT, FanDirection, MESSY_TURN, Sprite, StackOrder,
+  CARD_HEIGHT, CARD_WIDTH, DEFAULT_DECK_THEME, FanDirection, MESSY_TURN, Sprite, StackOrder,
   buildDeck, cardFaceMetrics, createTable, seeded, shuffle,
 } from 'felt';
 import { showCode } from './code';
-import { button, expose, standalone } from './kit';
+import { button, expose, label, slot, standalone } from './kit';
 import { defineScene } from 'felt';
 
 // A scene: run on its own page (standalone, below) or as one screen of the
@@ -81,16 +81,10 @@ export const scene = defineScene({
     function printFelt(): void {
       for (const mark of marks.splice(0)) mark.destroy();
       for (const { stack } of piles) {
-        marks.push(board.graphic(CARD_WIDTH, CARD_HEIGHT, (pen, w, h) => {
-          pen.strokeStyle = 'rgba(207, 234, 208, 0.25)';
-          pen.lineWidth = 1.5;
-          pen.beginPath();
-          pen.roundRect(0.75, 0.75, w - 1.5, h - 1.5, 5);
-          pen.stroke();
-        }, { key: 'stacks-slot', x: stack.x, y: stack.y, depth: 0 }));
+        marks.push(slot(board, stack.x, stack.y));
       }
       const say = (x: number, y: number, text: string, color: string, size = 10) => {
-        marks.push(board.text(text, { font: DISPLAY_FONT, size, color }, { x, y, depth: 0 }));
+        marks.push(label(board, x, y, text, color, size));
       };
       for (const { stack } of piles) {
         if (stack.id === 'deck') {

@@ -1,6 +1,6 @@
 import './serve';
 import {
-  CARD_HEIGHT, CARD_WIDTH, SUITS, SUIT_COLORS, Suit, buildDeck, createTable, defineScene, flipCard, seeded, shuffle,
+  CARD_HEIGHT, CARD_WIDTH, SUITS, SUIT_COLORS, Suit, buildDeck, createTable, defineScene, flipCard, paintFelt, seeded, shuffle,
 } from 'felt';
 import { showCode } from './code';
 import { button, expose, label, standalone } from './kit';
@@ -39,19 +39,12 @@ export const scene = defineScene({
     const glows = stacks.map((stack) => {
       const suit = stack.id as Suit;
       const { x, y } = stack.stack;
-      board.graphic(CARD_WIDTH + 10, CARD_HEIGHT + 10, (pen, w, h) => {
-        pen.strokeStyle = 'rgba(207, 234, 208, 0.35)';
-        pen.lineWidth = 2;
-        pen.setLineDash([5, 4]);
-        pen.beginPath();
-        pen.roundRect(5, 5, w - 10, h - 10, 5);
-        pen.stroke();
-        pen.fillStyle = SUIT_COLORS[suit] === 'red' ? 'rgba(255, 140, 130, 0.35)' : 'rgba(207, 234, 208, 0.3)';
-        pen.font = '30px system-ui, sans-serif';
-        pen.textAlign = 'center';
-        pen.textBaseline = 'middle';
-        pen.fillText(SYMBOL[suit], w / 2, h / 2 + 1);
-      }, { key: `magnet-${suit}`, x, y, depth: -10 });
+      paintFelt(board, { shape: 'rect', width: CARD_WIDTH, height: CARD_HEIGHT, radius: 5, stroke: 2, dash: [5, 4] },
+        { x, y, depth: -10, color: 'rgba(207, 234, 208, 0.35)' });
+      paintFelt(board, { text: SYMBOL[suit], font: 'system-ui, sans-serif', size: 30 }, {
+        x, y: y + 1, depth: -10,
+        color: SUIT_COLORS[suit] === 'red' ? 'rgba(255, 140, 130, 0.35)' : 'rgba(207, 234, 208, 0.3)',
+      });
       label(board, x, y + CARD_HEIGHT / 2 + 18, suit.toUpperCase());
       const glow = board.graphic(REACH * 2, REACH * 2, (pen, w, h) => {
         const light = pen.createRadialGradient(w / 2, h / 2, 10, w / 2, h / 2, w / 2);

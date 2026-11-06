@@ -1,10 +1,10 @@
 import './serve';
 import {
-  Card, CardSprite, DECK_THEMES, DeckTheme, DISPLAY_FONT, Rank, Sprite, Suit,
+  Card, CardSprite, DECK_THEMES, DeckTheme, Rank, Sprite, Suit,
   buildDeck, cardFaceMetrics, loadCardArt,
 } from 'felt';
 import { showCode } from './code';
-import { button, expose, standalone } from './kit';
+import { button, expose, label, standalone } from './kit';
 import { defineScene } from 'felt';
 
 // A scene: run on its own page (standalone, below) or as one screen of the
@@ -73,8 +73,7 @@ export const scene = defineScene({
           const sprite = new CardSprite(board, card, { width, theme });
           sprite.setPosition(x + width / 2, baseline - metrics.height / 2);
           cards.push(sprite);
-          labels.push(board.text(String(width), { font: DISPLAY_FONT, size: 10, color: '#7fae86' },
-            { x: x + width / 2, y: baseline + 8, originY: 0 }));
+          labels.push(label(board, x + width / 2, baseline + 8 + 6.5, String(width)));
           x += width + gap;
         }
         // #endregion

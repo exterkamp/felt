@@ -1,24 +1,23 @@
 import {
-  Board, CARD_HEIGHT, CARD_WIDTH, DISPLAY_FONT, Director, Scene, SceneContext, Sprite, animatorOf, fpsMeter,
+  Board, CARD_HEIGHT, CARD_WIDTH, DISPLAY_FONT, Director, FeltPaint, Scene, SceneContext, animatorOf, fpsMeter,
+  paintFelt,
 } from 'felt';
 
-// The two things every demo page prints on its felt: the outline of an empty
-// pile, and a small label. One picture each, shared by every sprite using it.
+// The two things every demo page paints on its felt: the outline of an empty
+// pile, and a small label. Felt paint (paintFelt), so one picture each is
+// shared by every mark that is the same.
+
+/** The paint the demos' outlines and labels are in: the felt's own pale green. */
+export const OUTLINE_PAINT = 'rgba(207, 234, 208, 0.25)';
 
 export function slot(board: Board, x: number, y: number, depth = 0,
-  width = CARD_WIDTH, height = CARD_HEIGHT): Sprite {
-  return board.graphic(width, height, (pen, w, h) => {
-    pen.strokeStyle = 'rgba(207, 234, 208, 0.25)';
-    pen.lineWidth = 1.5;
-    pen.beginPath();
-    pen.roundRect(0.75, 0.75, w - 1.5, h - 1.5, 5);
-    pen.stroke();
-  }, { key: `slot-${width}x${height}`, x, y, depth });
+  width = CARD_WIDTH, height = CARD_HEIGHT, color = OUTLINE_PAINT, angle = 0): FeltPaint {
+  return paintFelt(board, { shape: 'rect', width, height, radius: 5, stroke: 1.5 }, { x, y, depth, color, angle });
 }
 
 export function label(board: Board, x: number, y: number, text: string,
-  color = '#7fae86', size = 10, font = DISPLAY_FONT): Sprite {
-  return board.text(text, { font, size, color }, { x, y, depth: 0 });
+  color = '#7fae86', size = 10, font = DISPLAY_FONT, weight?: string): FeltPaint {
+  return paintFelt(board, { text, font, size, weight }, { x, y, depth: 0, color });
 }
 
 /**

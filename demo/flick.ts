@@ -1,7 +1,7 @@
 import './serve';
 import {
   CARD_HEIGHT, CARD_WIDTH, CardSprite, animatorOf, buildDeck, defineScene, flickCard, flipCard,
-  seeded, shuffle, throwCard,
+  paintFelt, seeded, shuffle, throwCard,
 } from 'felt';
 import { showCode } from './code';
 import { expose, label, standalone } from './kit';
@@ -24,20 +24,13 @@ export const scene = defineScene({
     const board = ctx.board({ parent: 'board', width: W, height: H, backgroundColor: '#13463a' });
     const animator = animatorOf(board);
 
-    // The ring: three circles, one picture.
-    board.graphic(RING.r * 2 + 8, RING.r * 2 + 8, (pen, w, h) => {
-      for (const [r, a] of [[1, 0.28], [0.62, 0.36], [0.26, 0.5]] as const) {
-        pen.beginPath();
-        pen.arc(w / 2, h / 2, RING.r * r, 0, Math.PI * 2);
-        pen.strokeStyle = `rgba(255, 209, 102, ${a})`;
-        pen.lineWidth = 2;
-        pen.stroke();
-      }
-      pen.beginPath();
-      pen.arc(w / 2, h / 2, 3, 0, Math.PI * 2);
-      pen.fillStyle = 'rgba(255, 209, 102, 0.6)';
-      pen.fill();
-    }, { key: 'flick-ring', x: RING.x, y: RING.y, depth: -10 });
+    // The ring: three circles and a dot, painted on the felt.
+    for (const [r, a] of [[1, 0.28], [0.62, 0.36], [0.26, 0.5]] as const) {
+      paintFelt(board, { shape: 'ellipse', width: RING.r * r * 2 + 2, stroke: 2 },
+        { x: RING.x, y: RING.y, depth: -10, color: `rgba(255, 209, 102, ${a})` });
+    }
+    paintFelt(board, { shape: 'ellipse', width: 6, stroke: 0 },
+      { x: RING.x, y: RING.y, depth: -10, color: 'rgba(255, 209, 102, 0.6)' });
     label(board, DECK.x, DECK.y + CARD_HEIGHT / 2 + 14, 'DECK');
 
     let surface: keyof typeof SURFACES = 'felt';

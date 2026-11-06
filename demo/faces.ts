@@ -5,7 +5,7 @@ import {
   cardFaceMetrics, colorCss, loadCardArt, renderCourts,
 } from 'felt';
 import { showCode } from './code';
-import { button, expose, standalone } from './kit';
+import { button, expose, label as paintLabel, standalone } from './kit';
 import { defineScene } from 'felt';
 
 // A scene: run on its own page (standalone, below) or as one screen of the
@@ -54,7 +54,7 @@ export const scene = defineScene({
     }
 
     function say(x: number, y: number, text: string, color: string, size: number): void {
-      labels.push(board.text(text, { font: size > 10 ? DISPLAY_FONT : BODY_FONT, size, color }, { x, y }));
+      labels.push(paintLabel(board, x, y, text, color, size, size > 10 ? DISPLAY_FONT : BODY_FONT));
     }
 
     // #region A card in each face style
