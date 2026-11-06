@@ -234,6 +234,58 @@ const idle = await evaluate(`(async () => { const b = __felt.board;
   await new Promise(r => setTimeout(r, 1200)); return b.frames - f; })()`);
 check(idle === 0, `a still board draws no frames at all (${idle} in 1.2s)`);
 
+// --- the page lifecycle: a sleeping board coming back ----------------------
+console.log('\nthe page lifecycle');
+// Page.setWebLifecycleState hangs headless Chrome's page after a thaw (even
+// a page with no board on it), so the browser's own events are dispatched
+// here instead, with document.hidden overridden for visibility.
+const hiddenRun = JSON.parse(await evaluate(`(async () => {
+  const b = __felt.board; const tick = () => new Promise(r => setTimeout(r, 250));
+  const setHidden = (h) => { Object.defineProperty(document, 'hidden', { configurable: true, get: () => h });
+    document.dispatchEvent(new Event('visibilitychange')); };
+  const f0 = b.frames;
+  setHidden(true); await tick();
+  b.touch(); __felt.layOut?.(); await tick();
+  const whileHidden = b.frames - f0;
+  setHidden(false); await tick();
+  const shown = b.frames - f0 - whileHidden;
+  delete document.hidden;
+  const f1 = b.frames; const r1 = b.resumes;
+  document.dispatchEvent(new Event('freeze')); await tick();
+  document.dispatchEvent(new Event('resume')); await tick();
+  return JSON.stringify({ whileHidden, shown, thawed: b.frames - f1, resumes: b.resumes - r1 });
+})()`));
+check(hiddenRun.whileHidden === 0, `a hidden page draws nothing, even when touched (${hiddenRun.whileHidden} frames)`);
+check(hiddenRun.shown >= 1, `shown again, a sleeping board draws itself unasked (${hiddenRun.shown} frame)`);
+check(hiddenRun.resumes === 1 && hiddenRun.thawed >= 1, `and so does a frozen page thawed (${hiddenRun.thawed} frame)`);
+const cached = JSON.parse(await evaluate(`(async () => {
+  const b = __felt.board; const f = b.frames; const r = b.resumes;
+  dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
+  dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+  await new Promise(r => setTimeout(r, 300));
+  return JSON.stringify({ frames: b.frames - f, resumes: b.resumes - r });
+})()`));
+check(cached.resumes === 1 && cached.frames >= 1,
+  `a page back from the back/forward cache draws itself again (${cached.frames} frame)`);
+const rebuilt = JSON.parse(await evaluate(`(async () => {
+  const b = __felt.board; const old = b.canvas;
+  const count = () => { const c = b.snapshotCanvas(); const px = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+    let n = 0; for (let i = 0; i < px.length; i += 4) if (px[i] > 240 && px[i + 1] > 240 && px[i + 2] > 240) n++; return n; };
+  const before = count();
+  // Lost, and never given back: the case that used to leave a dead board.
+  old.getContext('webgl2').getExtension('WEBGL_lose_context').loseContext();
+  await new Promise(r => setTimeout(r, 2200));
+  return JSON.stringify({ before, after: count(), rebuilds: b.rebuilds, swapped: b.canvas !== old,
+    attached: b.canvas.isConnected && !old.isConnected, lost: b.renderer.lost, inst: b.renderer.instanceCount });
+})()`));
+check(rebuilt.rebuilds === 1 && rebuilt.swapped && rebuilt.attached && !rebuilt.lost,
+  'a context lost and never restored is replaced with a new canvas');
+check(rebuilt.after > rebuilt.before * 0.8 && rebuilt.inst > 50,
+  `with every card painted again on it (${rebuilt.after} card pixels, ${rebuilt.before} before, ${rebuilt.inst} instances)`);
+const dragAfter = await evaluate(`(() => { const b = __felt.board; const r = b.canvas.getBoundingClientRect();
+  return r.width > 0 && !!b.pick; })()`);
+check(dragAfter, 'and the new canvas is laid out where the old one was');
+
 // --- loading: no card before its sheets are finished ------------------------
 console.log('\nloading');
 await open('loading.html', '!!window.__felt?.frames');

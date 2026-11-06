@@ -117,7 +117,7 @@ export class Renderer {
   readonly maxTextureLayers: number;
 
   constructor(readonly canvas: HTMLCanvasElement, readonly atlas: Atlas,
-    options: { transparent?: boolean } = {}) {
+    options: { transparent?: boolean; generation?: number } = {}) {
     const gl = canvas.getContext('webgl2', {
       alpha: options.transparent ?? false,
       antialias: true,
@@ -128,6 +128,9 @@ export class Renderer {
     if (!gl) throw new Error('felt: this browser has no WebGL2');
     this.gl = gl;
     this.maxTextureLayers = gl.getParameter(gl.MAX_ARRAY_TEXTURE_LAYERS) as number;
+    // A renderer made to replace a dead one counts on from it, so meshes
+    // made by the old one know to make themselves again.
+    this.generation = options.generation ?? 0;
     this.setup();
     atlas.sink = (page, x, y, w, h, pixels) => this.upload(page, x, y, w, h, pixels);
   }
@@ -398,6 +401,8 @@ export class Renderer {
 
   destroy(): void {
     const gl = this.gl;
+    // A lost context has nothing left to free, and says so by erroring.
+    if (gl.isContextLost()) return;
     if (this.texture) gl.deleteTexture(this.texture);
     gl.deleteBuffer(this.instanceBuffer);
     gl.deleteVertexArray(this.cardVao);

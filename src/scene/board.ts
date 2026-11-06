@@ -1,6 +1,7 @@
 import { Atlas } from '../gl/atlas.js';
 import { lensDistance } from '../gl/lens.js';
 import { DrawItem, MeshItem, Renderer } from '../gl/renderer.js';
+import { LifecycleEvent, PageLifecycle } from '../runtime/lifecycle.js';
 import { Node } from './node.js';
 import { Sprite, SpriteOptions } from './sprite.js';
 import { Tweens } from './tweens.js';
@@ -51,7 +52,20 @@ export interface BoardOptions {
    * every card at once, with whatever art has arrived.
    */
   waitForArt?: boolean;
+  /**
+   * The page lifecycle to follow. The engine passes its own; a board made
+   * on its own makes one, and lets it go when destroyed.
+   */
+  lifecycle?: PageLifecycle;
 }
+
+/**
+ * How long a lost context is given to come back, while the page is showing,
+ * before the board stops waiting and makes a new canvas. Browsers may never
+ * send `webglcontextrestored`; a page out of the back/forward cache may have
+ * lost its context while it was in there.
+ */
+export const CONTEXT_RESTORE_WAIT_MS = 1000;
 
 export interface BoardPointer {
   /** In board units. */
@@ -97,13 +111,28 @@ function cssToRgba(color: string | number | undefined): [number, number, number,
 }
 
 export class Board {
-  readonly canvas: HTMLCanvasElement;
+  /** The canvas it draws into. A new one if the old one's context died. */
+  get canvas(): HTMLCanvasElement { return this._canvas; }
+  /** The renderer on that canvas. Replaced along with it. */
+  get renderer(): Renderer { return this._renderer; }
+  private _canvas: HTMLCanvasElement;
+  private _renderer: Renderer;
+  private readonly transparent: boolean;
+  private readonly lifecycle: PageLifecycle;
+  private readonly ownsLifecycle: boolean;
+  private unlistenCanvas: () => void = () => {};
+  private watchdog: ReturnType<typeof setTimeout> | undefined;
+  /** Whether the page is hidden, frozen or cached: no frames until it is back. */
+  private suspended = false;
+  /** Times a dead context was replaced with a new canvas. */
+  rebuilds = 0;
+  /** Times the page came back and the board drew itself again unasked. */
+  resumes = 0;
   readonly parent: HTMLElement;
   readonly width: number;
   readonly height: number;
   readonly pixelRatio: number;
   readonly atlas: Atlas;
-  readonly renderer: Renderer;
   readonly tweens = new Tweens();
   /** Camera to table, in units. Infinity on a flat board. */
   distance: number;
@@ -156,29 +185,119 @@ export class Board {
     this.vanishY = options.height / 2;
     this.background = options.transparent ? [0, 0, 0, 0] : cssToRgba(options.backgroundColor);
 
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.round(options.width * this.pixelRatio);
-    canvas.height = Math.round(options.height * this.pixelRatio);
-    // The canvas handles its own gestures; without this a drag on a phone is
-    // also a page scroll and the card sits still while the page slides.
-    canvas.style.touchAction = 'none';
-    canvas.style.display = 'block';
-    canvas.style.margin = '0 auto';
-    canvas.style.userSelect = 'none';
-    this.canvas = canvas;
+    this.transparent = options.transparent ?? false;
+    const canvas = this.makeCanvas();
+    this._canvas = canvas;
     this.parent.appendChild(canvas);
 
     this.atlas = new Atlas(2048);
     this.atlas.onChange = () => this.touch();
-    this.renderer = new Renderer(canvas, this.atlas, { transparent: options.transparent });
+    this._renderer = new Renderer(canvas, this.atlas, { transparent: this.transparent });
     this.tweens.onWake = () => this.wake();
+
+    this.ownsLifecycle = !options.lifecycle;
+    this.lifecycle = options.lifecycle ?? new PageLifecycle();
+    this.suspended = !this.lifecycle.active;
+    this.cleanup.push(this.lifecycle.on((event) => this.onLifecycle(event)));
 
     this.fit();
     if (typeof ResizeObserver !== 'undefined') {
       this.resizeObserver = new ResizeObserver(() => this.fit());
       this.resizeObserver.observe(this.parent);
     }
-    this.listen();
+    this.unlistenCanvas = this.listen(canvas);
+    this.wake();
+  }
+
+  private makeCanvas(): HTMLCanvasElement {
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(this.width * this.pixelRatio);
+    canvas.height = Math.round(this.height * this.pixelRatio);
+    // The canvas handles its own gestures; without this a drag on a phone is
+    // also a page scroll and the card sits still while the page slides.
+    canvas.style.touchAction = 'none';
+    canvas.style.display = 'block';
+    canvas.style.margin = '0 auto';
+    canvas.style.userSelect = 'none';
+    return canvas;
+  }
+
+  // --- the page's lifecycle ------------------------------------------------
+
+  /**
+   * A board asleep is the worst case for a page coming back: nothing is
+   * moving, so nothing would draw, and the browser may have thrown the
+   * canvas's pixels away while it was hidden, frozen or cached. So coming
+   * back always draws, after checking the GPU is still there.
+   */
+  private onLifecycle(event: LifecycleEvent): void {
+    if (this.destroyedFlag) return;
+    if (event.type === 'suspend') {
+      this.suspended = true;
+      if (this.frameRequest) cancelAnimationFrame(this.frameRequest);
+      this.frameRequest = 0;
+      return;
+    }
+    if (event.type === 'resume') {
+      this.suspended = false;
+      this.resumes++;
+      // The time it was away is not time anything should have moved for.
+      this.last = 0;
+      this.fit();
+      if (this.renderer.lost) this.armWatchdog();
+      this.dirty = true;
+      this.wake();
+      return;
+    }
+    if (event.type === 'pixelratio') {
+      this.fit();
+      this.touch();
+    }
+  }
+
+  /** Waits for a lost context to come back, and if it does not, replaces it. */
+  private armWatchdog(): void {
+    if (this.watchdog !== undefined || this.destroyedFlag) return;
+    this.watchdog = setTimeout(() => {
+      this.watchdog = undefined;
+      if (this.destroyedFlag || !this.renderer.lost) return;
+      // Hidden, the browser will not give it back anyway; try again on return.
+      if (this.suspended) return;
+      this.rebuild();
+    }, CONTEXT_RESTORE_WAIT_MS);
+  }
+
+  /**
+   * A new canvas and a new context in place of the dead ones. Everything on
+   * the GPU is made again: the renderer's objects here, meshes on their next
+   * draw (they see a new generation), and every atlas picture from how it was
+   * painted - the only place those pixels can come from.
+   */
+  private rebuild(): void {
+    const old = this._canvas;
+    const fresh = this.makeCanvas();
+    fresh.style.width = old.style.width;
+    fresh.style.height = old.style.height;
+    let renderer: Renderer;
+    try {
+      renderer = new Renderer(fresh, this.atlas, {
+        transparent: this.transparent, generation: this._renderer.generation,
+      });
+    } catch {
+      // No WebGL2 to be had right now (the GPU process is still coming
+      // back); wait and try again.
+      this.armWatchdog();
+      return;
+    }
+    this.unlistenCanvas();
+    old.replaceWith(fresh);
+    this._canvas = fresh;
+    this._renderer = renderer;
+    this.unlistenCanvas = this.listen(fresh);
+    this.rebuilds++;
+    this.atlas.repaintAll();
+    this.emit('rebuilt');
+    this.dirty = true;
     this.wake();
   }
 
@@ -337,8 +456,7 @@ export class Board {
     return out;
   }
 
-  private listen(): void {
-    const canvas = this.canvas;
+  private listen(canvas: HTMLCanvasElement): () => void {
     const down = (event: PointerEvent) => {
       const at = this.toBoard(event.clientX, event.clientY);
       const node = this.pick(at.x, at.y);
@@ -396,23 +514,26 @@ export class Board {
       if (this.destroyedFlag) return;
       event.preventDefault();
       this.contextLosses++;
+      if (!this.suspended) this.armWatchdog();
     };
     const restored = () => {
       if (this.destroyedFlag) return;
+      clearTimeout(this.watchdog);
+      this.watchdog = undefined;
       this.renderer.restore();
       this.atlas.repaintAll();
       this.touch();
     };
     canvas.addEventListener('webglcontextlost', lost);
     canvas.addEventListener('webglcontextrestored', restored);
-    this.cleanup.push(() => {
+    return () => {
       canvas.removeEventListener('pointerdown', down);
       canvas.removeEventListener('pointermove', move);
       canvas.removeEventListener('pointerup', up);
       canvas.removeEventListener('pointercancel', up);
       canvas.removeEventListener('webglcontextlost', lost);
       canvas.removeEventListener('webglcontextrestored', restored);
-    });
+    };
   }
 
   /** Registers work to run once before each drawn frame. */
@@ -480,7 +601,7 @@ export class Board {
   }
 
   private wake(): void {
-    if (this.frameRequest || this.destroyedFlag) return;
+    if (this.frameRequest || this.destroyedFlag || this.suspended) return;
     this.frameRequest = requestAnimationFrame((t) => this.tick(t));
   }
 
@@ -576,7 +697,10 @@ export class Board {
     this.destroyedFlag = true;
     if (this.frameRequest) cancelAnimationFrame(this.frameRequest);
     this.resizeObserver?.disconnect();
+    clearTimeout(this.watchdog);
+    this.unlistenCanvas();
     for (const fn of this.cleanup) fn();
+    if (this.ownsLifecycle) this.lifecycle.destroy();
     this.emit('destroy');
     this.handlers.clear();
     this.renderer.destroy();
