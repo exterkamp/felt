@@ -200,6 +200,10 @@ export class CardSprite<S extends string = Suit> extends Node {
       this.current.backs = this.backs;
       return this.current;
     }
+    // Still being painted: shown meanwhile from the same look at another
+    // size - a card resized or made at a new size is never blank while one
+    // is there to stand in, only a little soft for a moment.
+    this.held ??= this.sheets.standIn(this.faces, this.backs);
     return this.held;
   }
 
@@ -246,7 +250,9 @@ export class CardSprite<S extends string = Suit> extends Node {
     // half-painted and then filling in.
     const sheets = this.drawn();
     if (!sheets) return false;
-    const m = sheets.faces.metrics;
+    // Always its own size, whichever sheets it is drawn from: a stand-in, or
+    // the look it is restyling from, is scaled to it.
+    const m = this.faces.metrics;
     const up = this.shownFace;
     // Asked of the sheet every frame, so a card whose rank or suit changed
     // shows the new face with nobody telling it to. `prepare` has already

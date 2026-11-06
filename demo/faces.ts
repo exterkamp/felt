@@ -58,7 +58,10 @@ export const scene = defineScene({
     }
 
     // #region A card in each face style
+    /** Which layout each card is drawn in, for restyling it. */
+    const faceOf = new Map<CardSprite, FaceStyle>();
     function lay(): void {
+      faceOf.clear();
       for (const card of cards) card.destroy();
       for (const l of labels) l.destroy();
       cards = [];
@@ -78,6 +81,7 @@ export const scene = defineScene({
             width, face, theme, backColor: DECK_STOCK[theme].back, courtPalette: courtStart(theme),
           });
           sprite.setPosition(x, top + row * (height + rowGap));
+          faceOf.set(sprite, face);
           cards.push(sprite);
         });
       });
@@ -94,9 +98,14 @@ export const scene = defineScene({
       suit = SUITS[(SUITS.indexOf(suit) + 1) % SUITS.length];
       lay();
     });
+    // Another deck is the same cards restyled, not new ones: each goes on
+    // showing the deck it had until the new one is painted.
     button(ctx, 'deck', () => {
       theme = DECK_THEMES[(DECK_THEMES.indexOf(theme) + 1) % DECK_THEMES.length];
-      paint();
+      for (const card of cards) {
+        card.restyle({ width, face: faceOf.get(card), theme, backColor: DECK_STOCK[theme].back, courtPalette: courtStart(theme) });
+      }
+      ctx.$('#note').textContent = `${DECK_THEME_LABELS[theme]}, ${suit}, ${width} units across.`;
     });
 
     paint();

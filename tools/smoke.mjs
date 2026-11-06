@@ -519,6 +519,19 @@ const faces = await evaluate(`(async () => { await new Promise(r => setTimeout(r
   const keys = art.report().filter(a => a.status === 'loaded').map(a => a.key);
   return { half: keys.filter(k => k.includes('-half-K-')).length, full: keys.filter(k => k.includes('-full-K-')).length }; })()`);
 check(faces.half >= 1 && faces.full >= 1, `both cuts of the court are rendered for the three faces (${faces.half} half, ${faces.full} full)`);
+// Dragging the size slider never blanks the cards: each size shows a finished
+// one scaled until its own is painted, and another deck is a restyle.
+const resize = JSON.parse(await evaluate(`(async () => {
+  const wait = (ms) => new Promise(r => setTimeout(r, ms));
+  const shown = () => __felt.cards().filter(c => c.revealed).length;
+  const fewest = { size: 99, deck: 99 };
+  const slider = document.getElementById('size');
+  for (let w = 60; w <= 140; w += 4) { slider.value = String(w); slider.dispatchEvent(new Event('input')); await wait(40); fewest.size = Math.min(fewest.size, shown()); }
+  for (let k = 0; k < 3; k++) { document.getElementById('deck').click(); for (let i = 0; i < 4; i++) { await wait(50); fewest.deck = Math.min(fewest.deck, shown()); } }
+  return JSON.stringify({ ...fewest, cards: __felt.cards().length });
+})()`));
+check(resize.size === resize.cards && resize.deck === resize.cards,
+  `resizing and restyling never blanks a card (fewest drawn: ${resize.size} while resizing, ${resize.deck} changing deck, of ${resize.cards})`);
 
 console.log('\nthe deck editor');
 await open('deck.html', '!!window.__felt?.editor');

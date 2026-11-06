@@ -366,6 +366,15 @@ export function resolveStyle(style: CardStyle, boardRatio: number): ResolvedStyl
 
 /** The key two styles share exactly when their faces look the same. */
 function faceKey(s: ResolvedStyle): string {
+  return `${faceFamily(s)}|${s.metrics.width}|${s.ratio}|${s.courtWidth}`;
+}
+
+/**
+ * What faces look like at any size: two styles with the same family differ
+ * only in how big, and how finely, the same pictures are painted - so one
+ * can stand in for the other, scaled, while it is painted.
+ */
+function faceFamily(s: ResolvedStyle): string {
   const m = s.metrics;
   // Inks by the standard suits; a function's answer for an invented suit is
   // still read per cell, and the cell is keyed by the sheet that drew it.
@@ -373,11 +382,15 @@ function faceKey(s: ResolvedStyle): string {
   const p = s.palette;
   const court = `${p.ink}${p.gold}${p.red}${courtPaper(p)}${courtHighlight(p)}`.replace(/#/g, '');
   const art = Object.entries(s.suitArt).map(([k, v]) => `${k}=${v}`).join(',');
-  return `sheet|${m.face}|${m.width}|${s.ratio}|${s.paper.toString(16)}|${inks}|${court}|${s.courtWidth}|${s.theme}|${art}`;
+  return `sheet|${m.face}|${s.paper.toString(16)}|${inks}|${court}|${s.theme}|${art}`;
 }
 
 function backKey(s: ResolvedStyle): string {
-  return `back|${s.theme}|${s.backColor.toString(16)}|${s.metrics.width}|${s.metrics.face}|${s.ratio}`;
+  return `${backFamily(s)}|${s.metrics.width}|${s.ratio}`;
+}
+
+function backFamily(s: ResolvedStyle): string {
+  return `back|${s.theme}|${s.backColor.toString(16)}|${s.metrics.face}`;
 }
 
 /** The board's card sheets. One per board; reach it with `CardSheets.of`. */
@@ -388,12 +401,16 @@ export class CardSheets {
   private readonly idleFaces = new Set<FaceSheet>();
   private readonly idleBacks = new Set<BackSheet>();
   private readonly warming = new Set<FaceSheet>();
+  /** Each sheet's family: the same look at another size. */
+  private readonly families = new Map<FaceSheet | BackSheet, { family: string; width: number }>();
   private wake?: () => void;
 
   constructor(private readonly board: Board) {
     board.beforeRender(() => this.prewarm());
-    // When the atlas is full, unused sheets are the first thing to go.
-    board.atlas.onPressure = () => this.trim(0, 0);
+    // When the atlas is full, unused sheets are the first thing to go - all
+    // but the newest finished one of each look, which is what a card being
+    // resized is shown from while its own size is painted.
+    board.atlas.onPressure = () => this.relieve();
   }
 
   static of(board: Board): CardSheets {
@@ -419,6 +436,7 @@ export class CardSheets {
     if (!sheet) {
       sheet = new FaceSheet(this.board, key, style);
       this.faces.set(key, sheet);
+      this.families.set(sheet, { family: faceFamily(style), width: style.metrics.width });
     }
     if (sheet.users++ === 0) this.idleFaces.delete(sheet);
     if (sheet.size < SUITS.length * RANKS.length) this.startWarming(sheet, later);
@@ -431,6 +449,7 @@ export class CardSheets {
     if (!sheet) {
       sheet = new BackSheet(this.board, key, style.theme, style.backColor, style.metrics, style.ratio);
       this.backs.set(key, sheet);
+      this.families.set(sheet, { family: backFamily(style), width: style.metrics.width });
     }
     if (sheet.users++ === 0) this.idleBacks.delete(sheet);
     return sheet;
@@ -451,6 +470,35 @@ export class CardSheets {
     this.trim(KEEP_FACES, KEEP_BACKS);
   }
 
+  /**
+   * Finished sheets to show a card from while its own are painted: its own
+   * where they are done, else the same look at the nearest other size
+   * (larger first, so it is never blurrier than it must be). Counted: give
+   * them back with `releaseFaces` / `releaseBack`. Undefined if there are none.
+   */
+  standIn(faces: FaceSheet, backs: BackSheet): { faces: FaceSheet; backs: BackSheet } | undefined {
+    const f = faces.ready() ? faces : this.nearest(this.faces.values(), faces);
+    const b = backs.ready() ? backs : this.nearest(this.backs.values(), backs);
+    if (!f || !b) return undefined;
+    if (f.users++ === 0) this.idleFaces.delete(f);
+    if (b.users++ === 0) this.idleBacks.delete(b);
+    return { faces: f, backs: b };
+  }
+
+  private nearest<T extends FaceSheet | BackSheet>(all: Iterable<T>, want: T): T | undefined {
+    const wanted = this.families.get(want);
+    if (!wanted) return undefined;
+    let best: T | undefined;
+    let score = Infinity;
+    for (const sheet of all) {
+      const it = this.families.get(sheet);
+      if (sheet === want || !it || it.family !== wanted.family || !sheet.ready()) continue;
+      const apart = Math.abs(Math.log(it.width / wanted.width)) + (it.width < wanted.width ? 0.05 : 0);
+      if (apart < score) { score = apart; best = sheet; }
+    }
+    return best;
+  }
+
   /** How many sheets exist, in use and kept. For anyone measuring. */
   get stats(): { faces: number; backs: number; idleFaces: number; idleBacks: number; warming: number } {
     return {
@@ -459,20 +507,48 @@ export class CardSheets {
     };
   }
 
+  /** Drops every unused sheet but the newest finished one of each family. Answers whether any went. */
+  private relieve(): boolean {
+    let dropped = false;
+    const drop = <T extends FaceSheet | BackSheet>(idle: Set<T>, all: Map<string, T>) => {
+      const kept = new Set<string>();
+      for (const sheet of [...idle].reverse()) {
+        const family = this.families.get(sheet)?.family;
+        if (family && sheet.ready() && !kept.has(family)) {
+          kept.add(family);
+          continue;
+        }
+        idle.delete(sheet);
+        all.delete(sheet.key);
+        this.families.delete(sheet);
+        this.warming.delete(sheet as FaceSheet);
+        sheet.dispose();
+        dropped = true;
+      }
+    };
+    drop(this.idleFaces, this.faces);
+    drop(this.idleBacks, this.backs);
+    return dropped;
+  }
+
   /** Drops unused sheets beyond the counts given, oldest first. Answers whether any went. */
   trim(keepFaces: number, keepBacks: number): boolean {
     let dropped = false;
     while (this.idleFaces.size > keepFaces) {
-      const sheet = this.idleFaces.values().next().value!;
+      // An unfinished sheet nobody is using goes before a finished one: the
+      // finished ones are what a resized card is shown from meanwhile.
+      const sheet = [...this.idleFaces].find((f) => !f.ready()) ?? this.idleFaces.values().next().value!;
       this.idleFaces.delete(sheet);
       this.faces.delete(sheet.key);
+      this.families.delete(sheet);
       sheet.dispose();
       dropped = true;
     }
     while (this.idleBacks.size > keepBacks) {
-      const sheet = this.idleBacks.values().next().value!;
+      const sheet = [...this.idleBacks].find((b) => !b.ready()) ?? this.idleBacks.values().next().value!;
       this.idleBacks.delete(sheet);
       this.backs.delete(sheet.key);
+      this.families.delete(sheet);
       sheet.dispose();
       dropped = true;
     }
