@@ -240,7 +240,7 @@ export class CardSprite<S extends string = Suit> extends Node {
     return this._visible && this._alpha >= 1 && this.drawn() !== undefined;
   }
 
-  writeInstance(out: Float32Array, o: number): boolean {
+  writeInstance(out: Float32Array, o: number): boolean | number {
     if (!this._visible || this._alpha <= 0 || this.occluded) return false;
     // Not drawn at all until its art is finished: no card is ever seen
     // half-painted and then filling in.
@@ -275,9 +275,30 @@ export class CardSprite<S extends string = Suit> extends Node {
     out[o + 26] = (up ? FACE_EDGE : BACK_EDGE) * sx;
     out[o + 27] = (up ? BACK_EDGE : FACE_EDGE) * sx;
     out[o + 28] = 0xffffff;
-    out[o + 29] = 0;
+    out[o + 29] = p.lens;
     out[o + 30] = 0;
     out[o + 31] = 0;
+    // In the air - picked up, thrown - its shadow is cast on the felt rather
+    // than drawn round it in its own plane: a card rolled forty degrees above
+    // the table should not carry a halo rolled forty degrees with it. So the
+    // shadow is an instance of its own, flat on the table under the card,
+    // drawn first; the card after it, without one.
+    const shadow = out[o + 23];
+    if (p.z > 0.5 && shadow > 0) {
+      out.copyWithin(o + FLOATS, o, o + FLOATS);
+      out[o + FLOATS + 23] = 0;
+      out[o + 2] = 0;                                   // on the felt
+      out[o + 4] = 0;                                   // and flat on it,
+      out[o + 5] = 0;
+      out[o + 6] = 0;
+      // the shape the card's footprint makes from above as it rolls and tips
+      out[o + 8] *= Math.max(0.15, Math.abs(Math.cos(p.turn)));
+      out[o + 9] *= Math.max(0.15, Math.abs(Math.cos(p.tilt)));
+      out[o + 22] = 2;                                  // a shadow and nothing else
+      out[o + 29] = 0;
+      out[o + 30] = p.z;                                // how high the card is
+      return 2;
+    }
     return true;
   }
 }

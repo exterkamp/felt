@@ -75,7 +75,7 @@ describe('picking a card up', () => {
     pick.lift(c);
     let most = 0;
     for (let i = 0; i < 30; i++) { c.x += 200; clock.advance(1000 / 60); most = Math.max(most, Math.abs(c.shown.turn)); }
-    expect(most).toBeLessThan(0.32 * 1.35);   // a spring may overshoot a little
+    expect(most).toBeLessThan(0.7 * 1.35);   // a spring may overshoot a little
   });
 
   it('put down, drops back onto the table and lets the card go', () => {
@@ -106,5 +106,29 @@ describe('picking a card up', () => {
     expect(c.shown.z).toBeGreaterThan(mid * 0.5);
     clock.advance(800);
     expect(c.shown.z).toBeGreaterThan(24);
+  });
+});
+
+describe('how it settles', () => {
+  it('swings past where it is going at most once, and only a little', () => {
+    const { clock, pick } = setup();
+    const c = card();
+    pick.lift(c);
+    clock.advance(300);
+    for (let i = 0; i < 15; i++) { c.x += 14; clock.advance(1000 / 60); }
+    // Stopped: count the swings through upright on the way back.
+    let crossings = 0;
+    let last = Math.sign(c.shown.turn);
+    let overshoot = 0;
+    for (let i = 0; i < 120; i++) {
+      clock.advance(1000 / 60);
+      // Visible swings only: a few thousandths either side of upright is
+      // the spring arriving, not a wobble.
+      const now = Math.abs(c.shown.turn) > 0.005 ? Math.sign(c.shown.turn) : 0;
+      if (now !== 0 && now !== last) { crossings++; last = now; }
+      if (crossings) overshoot = Math.max(overshoot, Math.abs(c.shown.turn));
+    }
+    expect(crossings).toBeLessThanOrEqual(1);
+    expect(overshoot).toBeLessThan(0.1);
   });
 });

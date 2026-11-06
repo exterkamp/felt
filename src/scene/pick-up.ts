@@ -21,18 +21,23 @@ import { Offset, zeroOffset } from './animator.js';
 export interface PickUpOptions {
   /** How high it is held, in board units towards the camera. Default 26. */
   lift?: number;
-  /** Most it tips or rolls, in radians. Default 0.32. */
+  /** Most it tips or rolls, in radians. Default 0.7 (40 degrees). */
   maxSwivel?: number;
-  /** Most it sways in the table's plane, in degrees. Default 7. */
+  /** Most it sways in the table's plane, in degrees. Default 12. */
   maxSway?: number;
-  /** Radians of swivel per board unit a second of speed. Default 0.0006. */
+  /** Radians of swivel per board unit a second of speed. Default 0.0015. */
   swivel?: number;
-  /** Degrees of sway per board unit a second of sideways speed. Default 0.012. */
+  /** Degrees of sway per board unit a second of sideways speed. Default 0.022. */
   sway?: number;
-  /** Spring stiffness, per second squared. Higher is snappier. Default 170. */
+  /** Spring stiffness, per second squared. Higher is snappier. Default 150. */
   stiffness?: number;
-  /** Fraction of critical damping: below 1 overshoots a little. Default 0.62. */
+  /** Fraction of critical damping: below 1 swings past and back. Default 0.62. */
   damping?: number;
+  /**
+   * Extra perspective while held, so its tipping and rolling read as depth:
+   * 1 sees it from half the board's camera distance. Default 1.8.
+   */
+  perspective?: number;
 }
 
 /** What a picked-up card needs to be: something with a pose that wears offsets. */
@@ -80,6 +85,7 @@ interface Held {
   tilt: Spring;
   turn: Spring;
   angle: Spring;
+  lens: Spring;
 }
 
 export class PickUp {
@@ -90,12 +96,14 @@ export class PickUp {
   constructor(private readonly engine: Engine, options: PickUpOptions = {}) {
     this.options = {
       lift: options.lift ?? 26,
-      maxSwivel: options.maxSwivel ?? 0.32,
-      maxSway: options.maxSway ?? 7,
-      swivel: options.swivel ?? 0.0006,
-      sway: options.sway ?? 0.012,
-      stiffness: options.stiffness ?? 170,
+      maxSwivel: options.maxSwivel ?? 0.7,
+      maxSway: options.maxSway ?? 12,
+      swivel: options.swivel ?? 0.0015,
+      sway: options.sway ?? 0.022,
+      stiffness: options.stiffness ?? 150,
+      // One small overshoot, not a wobble: 0.42 swung back and forth.
       damping: options.damping ?? 0.62,
+      perspective: options.perspective ?? 1.8,
     };
   }
 
@@ -115,7 +123,7 @@ export class PickUp {
     if (!held) {
       held = {
         node, offset: zeroOffset(), down: false, lastX: node.x, lastY: node.y, vx: 0, vy: 0,
-        z: new Spring(), tilt: new Spring(), turn: new Spring(), angle: new Spring(),
+        z: new Spring(), tilt: new Spring(), turn: new Spring(), angle: new Spring(), lens: new Spring(),
       };
       node.addOffset(held.offset);
       this.held.set(node, held);
@@ -156,9 +164,10 @@ export class PickUp {
       const dy = node.y - held.lastY;
       held.lastX = node.x;
       held.lastY = node.y;
-      // Smoothed over about a twentieth of a second: pointer events arrive
-      // in bursts, and the raw speed between two of them is noise.
-      const blend = 1 - Math.exp(-dt / 0.05);
+      // Smoothed over about a fourteenth of a second: pointer events arrive
+      // in bursts, and the raw speed between two of them is noise that a
+      // springy card turns into jitter.
+      const blend = 1 - Math.exp(-dt / 0.07);
       held.vx += (dx / dt - held.vx) * blend;
       held.vy += (dy / dt - held.vy) * blend;
       if (held.down) {
@@ -182,14 +191,16 @@ export class PickUp {
       held.turn.step(turnTo, dt, o.stiffness, o.damping);
       held.tilt.step(tiltTo, dt, o.stiffness, o.damping);
       held.angle.step(swayTo, dt, o.stiffness, o.damping);
+      held.lens.step(held.down ? 0 : o.perspective, dt, o.stiffness * 0.6, 1);
       // Never below the table: a spring overshooting zero would put it under.
       held.offset.z = Math.max(0, held.z.value);
       held.offset.turn = held.turn.value;
       held.offset.tilt = held.tilt.value;
       held.offset.angle = held.angle.value;
+      held.offset.lens = Math.max(0, held.lens.value);
       node.offsetChanged();
       if (held.down && held.z.value <= 0.05 && held.z.speed <= 0.5
-        && held.turn.settled(0) && held.tilt.settled(0) && held.angle.settled(0)) {
+        && held.turn.settled(0) && held.tilt.settled(0) && held.angle.settled(0) && held.lens.value < 0.01) {
         this.release(held);
         this.held.delete(node);
       }

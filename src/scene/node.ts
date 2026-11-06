@@ -158,15 +158,15 @@ export abstract class Node implements InstanceItem, Layered {
    * starting off another's half-way point.
    */
   get shown(): { x: number; y: number; z: number; angle: number; tilt: number; turn: number;
-    bow: number; scaleX: number; scaleY: number } {
+    bow: number; scaleX: number; scaleY: number; lens: number } {
     const pose = {
       x: this._x, y: this._y, z: this._z, angle: this._angle, tilt: this._tilt,
-      turn: this._turn, bow: this._bow, scaleX: this._scaleX, scaleY: this._scaleY,
+      turn: this._turn, bow: this._bow, scaleX: this._scaleX, scaleY: this._scaleY, lens: 0,
     };
     for (const o of this.offsets) {
       pose.x += o.x; pose.y += o.y; pose.z += o.z; pose.angle += o.angle;
       pose.tilt += o.tilt; pose.turn += o.turn; pose.bow += o.bow;
-      pose.scaleX *= o.scale; pose.scaleY *= o.scale;
+      pose.scaleX *= o.scale; pose.scaleY *= o.scale; pose.lens += o.lens ?? 0;
     }
     return pose;
   }
@@ -206,7 +206,13 @@ export abstract class Node implements InstanceItem, Layered {
     this.board.detach(this);
   }
 
-  abstract writeInstance(out: Float32Array, offset: number): boolean;
+  /**
+   * Writes what it draws into the instance buffer at `offset`, and answers
+   * how many instances that was - 0 or false for none. A card in the air
+   * writes two: its shadow on the felt, then itself. Room for two is
+   * always there.
+   */
+  abstract writeInstance(out: Float32Array, offset: number): boolean | number;
 
   /**
    * Called on every visible node just before a frame is drawn, for work that
@@ -258,11 +264,12 @@ export abstract class Node implements InstanceItem, Layered {
     const p = this.drawnPose;
     p.x = this._x; p.y = this._y; p.z = this._z; p.angle = this._angle; p.tilt = this._tilt;
     p.turn = this._turn; p.bow = this._bow; p.scaleX = this._scaleX; p.scaleY = this._scaleY;
+    p.lens = 0;
     return p;
   }
 
   private readonly drawnPose: Node['shown'] = {
-    x: 0, y: 0, z: 0, angle: 0, tilt: 0, turn: 0, bow: 0, scaleX: 1, scaleY: 1,
+    x: 0, y: 0, z: 0, angle: 0, tilt: 0, turn: 0, bow: 0, scaleX: 1, scaleY: 1, lens: 0,
   };
 }
 

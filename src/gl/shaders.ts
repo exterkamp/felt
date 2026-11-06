@@ -17,14 +17,18 @@ uniform float u_distance;  // camera to table; 0 means flat (orthographic)
 uniform vec2 u_vanish;     // the board's own vanishing point
 uniform float u_local;     // 1: each object is seen from straight above itself
 
-vec4 projectWorld(vec3 world, vec2 centre) {
-  float w = u_distance > 0.0 ? 1.0 - world.z / u_distance : 1.0;
+vec4 projectAt(vec3 world, vec2 centre, float distance) {
+  float w = distance > 0.0 ? 1.0 - world.z / distance : 1.0;
   vec2 a = vec2(2.0 / u_board.x, -2.0 / u_board.y);
   vec2 b = vec2(-1.0, 1.0);
   // clip.xy / w is the ndc of centre + (world.xy - centre) / w, written so it
   // stays linear in the world point - which keeps textures perspective-correct.
   vec2 clip = (a * centre + b) * w + a * (world.xy - centre);
   return vec4(clip, -world.z / 4000.0, w);
+}
+
+vec4 projectWorld(vec3 world, vec2 centre) {
+  return projectAt(world, centre, u_distance);
 }
 `;
 
@@ -39,7 +43,7 @@ layout(location = 4) in vec4 i_front;   // uv rect of the side facing the camera
 layout(location = 5) in vec4 i_back;    // uv rect of the side facing away
 layout(location = 6) in vec4 i_layers;  // front layer, back layer, kind, shadow
 layout(location = 7) in vec4 i_edge;    // front edge rgb, back edge rgb, their widths
-layout(location = 8) in vec4 i_tint;    // tint rgb, unused x3
+layout(location = 8) in vec4 i_tint;    // tint rgb, extra lens, a shadow's lift, unused
 
 out vec2 v_local;
 flat out vec4 v_front;
@@ -63,7 +67,9 @@ void main() {
   // The shadow's room grows as the card lifts, because its shadow falls
   // further away and softer - clipped to the card's own margin it would end
   // in a hard edge half way across the felt.
-  float lift = max(0.0, i_place.z);
+  // A cast shadow lies on the felt (z 0) and is told how high its card is.
+  bool castShadow = i_layers.z > 1.5;
+  float lift = castShadow ? i_tint.z : max(0.0, i_place.z);
   float margin = i_size.w * (1.0 + lift * 0.05) + lift * 0.8;
   vec2 local = vec2((a_grid.x - 0.5) * (width + 2.0 * margin),
                     (a_grid.y - 0.5) * (height + 2.0 * margin));
@@ -83,7 +89,9 @@ void main() {
 
   vec3 world = i_place.xyz + p;
   vec2 centre = mix(u_vanish, i_place.xy, u_local);
-  gl_Position = projectWorld(world, centre);
+  // A held card can be seen through a stronger lens than the board's, so
+  // its tipping reads as depth: the camera brought closer for it alone.
+  gl_Position = projectAt(world, centre, u_distance / (1.0 + max(0.0, i_tint.y)));
 
   v_local = local;
   v_front = i_front;
@@ -165,7 +173,8 @@ void main() {
   float body = clamp(0.5 - d / aa, 0.0, 1.0);
 
   vec4 card = vec4(0.0);
-  if (body > 0.0) {
+  bool castShadow = v_layers.z > 1.5;
+  if (body > 0.0 && !castShadow) {
     card = texture(u_atlas, vec3(clamp(uv, min(rect.xy, rect.zw), max(rect.xy, rect.zw)), layer));
     float edgeWidth = facing ? v_edge.z : v_edge.w;
     vec3 edgeColour = rgb(facing ? v_edge.x : v_edge.y);

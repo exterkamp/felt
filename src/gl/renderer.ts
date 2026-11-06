@@ -15,7 +15,8 @@ import {
 export interface InstanceItem {
   readonly drawKind: 'instance';
   /** Writes this item's 32 floats at `offset`. Returns false to be skipped. */
-  writeInstance(out: Float32Array, offset: number): boolean;
+  /** Instances written: true or 1 for one, 0 or false for none, 2 for a card and its shadow. */
+  writeInstance(out: Float32Array, offset: number): boolean | number;
 }
 
 export interface MeshItem {
@@ -342,8 +343,9 @@ export class Renderer {
     gl.disable(gl.CULL_FACE);
 
     // Every instance first, into one buffer, noting where the meshes cut it.
-    if (this.instances.length < items.length * INSTANCE_FLOATS) {
-      this.instances = new Float32Array(Math.max(items.length, this.instances.length / INSTANCE_FLOATS * 2)
+    // Room for every item and a shadow for each, so no write can overrun.
+    if (this.instances.length < items.length * 2 * INSTANCE_FLOATS) {
+      this.instances = new Float32Array(Math.max(items.length * 2, this.instances.length / INSTANCE_FLOATS * 2)
         * INSTANCE_FLOATS);
     }
     const runs: ({ first: number; count: number; bowed: boolean } | MeshItem)[] = [];
@@ -359,7 +361,8 @@ export class Renderer {
         bowed = false;
         continue;
       }
-      if (item.writeInstance(instances, count * INSTANCE_FLOATS)) {
+      const wrote = Number(item.writeInstance(instances, count * INSTANCE_FLOATS));
+      for (let k = 0; k < wrote; k++) {
         // A bow is the only thing the grid's rows are for.
         if (instances[count * INSTANCE_FLOATS + 6] !== 0) bowed = true;
         count++;

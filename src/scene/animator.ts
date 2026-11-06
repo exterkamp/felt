@@ -32,10 +32,16 @@ export interface Offset {
   x: number; y: number; z: number;
   angle: number; tilt: number; turn: number; bow: number;
   scale: number;
+  /**
+   * Extra perspective for the node wearing it: 1 sees it from half as far
+   * away, so a tipped card foreshortens like one held close to the eye.
+   * Only how it is drawn - not its position, and not picking.
+   */
+  lens: number;
 }
 
 export const zeroOffset = (): Offset =>
-  ({ x: 0, y: 0, z: 0, angle: 0, tilt: 0, turn: 0, bow: 0, scale: 1 });
+  ({ x: 0, y: 0, z: 0, angle: 0, tilt: 0, turn: 0, bow: 0, scale: 1, lens: 0 });
 
 /** Something that can wear offsets: every Node. */
 export interface Layered {
