@@ -29,7 +29,9 @@ export const scene = defineScene({
     // --- 1 -----------------------------------------------------------------
     // #region 1. A board
     const blank = ctx.board({ parent: 'b-board', width: 480, height: 200, backgroundColor: FELT });
-    void loadCardArt(blank);   // shared through the engine: every board after this one starts warm
+    // Optional: cards fetch their own art as they are made. This only starts
+    // it sooner - and it is the engine's, so every board after this one is warm.
+    void loadCardArt(blank);
     // #endregion
     const describe = () => say('s-board', `${blank.width} × ${blank.height} board units, shown at `
       + `${blank.canvas.style.width} · ${blank.pixelRatio}× pixels · ${blank.is3d ? 'perspective' : 'flat'}`
@@ -40,7 +42,6 @@ export const scene = defineScene({
     // --- 2 -----------------------------------------------------------------
     // #region 2. A card
     const table = ctx.board({ parent: 'b-card', width: 480, height: 200, backgroundColor: FELT });
-    void loadCardArt(table);
     // The data: plain objects, the same ones a game's rules would hold.
     const three = [find('A', 'spades'), find('Q', 'hearts'), find('7', 'diamonds')];
     three.forEach((card, i) => {
@@ -61,7 +62,6 @@ export const scene = defineScene({
     // --- 3 -----------------------------------------------------------------
     // #region 3. Its pose
     const poseBoard = ctx.board({ parent: 'b-pose', width: 480, height: 240, backgroundColor: FELT });
-    void loadCardArt(poseBoard);
     const posed = new CardSprite(poseBoard, { ...find('K', 'hearts'), faceUp: true }, { width: 96 });
     posed.setPosition(240, 120);
     for (const input of ctx.root.querySelectorAll<HTMLInputElement>('#pose input')) {
@@ -85,7 +85,6 @@ export const scene = defineScene({
     // --- 4 -----------------------------------------------------------------
     // #region 4. A stack
     const stackBoard = ctx.board({ parent: 'b-stack', width: 480, height: 300, backgroundColor: FELT });
-    void loadCardArt(stackBoard);
     const FANS: FanDirection[] = ['down', 'right', 'left', 'up', 'none'];
     let fan: FanDirection = 'down';
     let messy = 0;
@@ -128,7 +127,6 @@ export const scene = defineScene({
 
     // --- 5 -----------------------------------------------------------------
     const throwBoard = ctx.board({ parent: 'b-throw', width: 480, height: 280, backgroundColor: FELT });
-    void loadCardArt(throwBoard);
     const STOCK_AT = { x: 420, y: 200 };
     const stockCards = (board: typeof throwBoard, at: { x: number; y: number }, seed: number) =>
       shuffle(buildDeck(), seeded(seed)).map((card, i) => {
@@ -187,7 +185,6 @@ export const scene = defineScene({
     // --- 6 -----------------------------------------------------------------
     // #region 6. Dragging
     const dragBoard = ctx.board({ parent: 'b-drag', width: 480, height: 260, backgroundColor: FELT });
-    void loadCardArt(dragBoard);
     const columns = [100, 240, 380].map((x, i) => ({
       stack: defineStack({ id: `column-${i}`, x, y: 70, fan: 'down', step: 24, maxSpread: 120 }),
       cards: [] as CardSprite[],
@@ -238,7 +235,6 @@ export const scene = defineScene({
 
     // --- 7 -----------------------------------------------------------------
     const handBoard = ctx.board({ parent: 'b-hand', width: 480, height: 280, backgroundColor: FELT });
-    void loadCardArt(handBoard);
     const HAND_DECK = { x: 60, y: 110 };
     const handStock = stockCards(handBoard, HAND_DECK, 7);
     // #region 7. A hand
@@ -274,7 +270,6 @@ export const scene = defineScene({
 
     // --- 8 -----------------------------------------------------------------
     const flickBoard = ctx.board({ parent: 'b-flick', width: 480, height: 360, backgroundColor: FELT });
-    void loadCardArt(flickBoard);
     const FLICK_DECK = { x: 240, y: 290 };
     const flickStock = stockCards(flickBoard, FLICK_DECK, 8);
     for (const card of flickStock) card.draggable = true;

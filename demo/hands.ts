@@ -1,9 +1,9 @@
 import './serve';
 import {
-  CARD_HEIGHT, Card, CardSprite, COURT_PALETTES, DEFAULT_DECK_THEME, Hand, buildDeck, defineHand, flipCard, handPositions, layHand, loadCardArt, renderCourts, shuffle, throwCard,
+  CARD_HEIGHT, Card, CardSprite, Hand, buildDeck, defineHand, flipCard, handPositions, layHand, shuffle, throwCard,
 } from 'felt';
 import { showCode } from './code';
-import { expose, label, standalone } from './kit';
+import { button, expose, label, standalone } from './kit';
 import { defineScene } from 'felt';
 
 // A scene: run on its own page (standalone, below) or as one screen of the
@@ -23,8 +23,6 @@ export const scene = defineScene({
     const DECK = { x: 60, y: 300 };
 
     const board = ctx.board({ parent: 'board', width: WIDTH, height: HEIGHT, backgroundColor: '#13463a' });
-    void loadCardArt(board, { themes: [DEFAULT_DECK_THEME] });
-    void renderCourts(board, COURT_PALETTES[DEFAULT_DECK_THEME]);
 
     let deck: CardSprite[] = [];
     let mine!: Hand;
@@ -115,15 +113,15 @@ export const scene = defineScene({
         + `Grip ${radius} units below, spread ${spread}° — open ${width}° at ${turn}° a card.`;
     }
 
-    document.getElementById('throw')?.addEventListener('click', () => void throwOne());
-    document.getElementById('take')?.addEventListener('click', () => takeOne());
-    document.getElementById('reset')?.addEventListener('click', () => newDeck());
-    document.getElementById('curve')?.addEventListener('click', () => {
+    button(ctx, 'throw', () => void throwOne());
+    button(ctx, 'take', () => takeOne());
+    button(ctx, 'reset', () => newDeck());
+    button(ctx, 'curve', () => {
       radius = radius === 260 ? 140 : radius === 140 ? 900 : 260;
       shape();
       layOut();
     });
-    document.getElementById('spread')?.addEventListener('click', () => {
+    button(ctx, 'spread', () => {
       spread = spread === 70 ? 110 : spread === 110 ? 40 : 70;
       shape();
       layOut();

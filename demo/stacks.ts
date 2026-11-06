@@ -4,7 +4,7 @@ import {
   buildDeck, cardFaceMetrics, createTable, seeded, shuffle,
 } from 'felt';
 import { showCode } from './code';
-import { expose, standalone } from './kit';
+import { button, expose, standalone } from './kit';
 import { defineScene } from 'felt';
 
 // A scene: run on its own page (standalone, below) or as one screen of the
@@ -148,14 +148,14 @@ export const scene = defineScene({
     table.draggable();
     // #endregion
 
-    document.getElementById('deal')?.addEventListener('click', () => deal());
+    button(ctx, 'deal', () => deal());
     const dial = document.getElementById('messy') as HTMLInputElement | null;
     dial?.addEventListener('input', () => {
       messy = Number(dial.value);
       reshape();
       report();
     });
-    document.getElementById('squeeze')?.addEventListener('click', () => {
+    button(ctx, 'squeeze', () => {
       squeezed = !squeezed;
       reshape();
       report();

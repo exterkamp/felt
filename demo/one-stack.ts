@@ -4,7 +4,7 @@ import {
   orderStack, seeded, shuffle, stackPositions, throwCard, topCardIndex,
 } from 'felt';
 import { showCode } from './code';
-import { expose, slot, standalone } from './kit';
+import { button, expose, slot, standalone } from './kit';
 import { defineScene } from 'felt';
 
 // A scene: run on its own page (standalone, below) or as one screen of the
@@ -110,10 +110,10 @@ export const scene = defineScene({
       lay();
     }
 
-    document.getElementById('add')!.addEventListener('click', () => void add());
-    document.getElementById('take')!.addEventListener('click', take);
-    document.getElementById('flip')!.addEventListener('click', () => void flipTop());
-    document.getElementById('fan')!.addEventListener('click', nextFan);
+    button(ctx, 'add', () => void add());
+    button(ctx, 'take', take);
+    button(ctx, 'flip', () => void flipTop());
+    button(ctx, 'fan', nextFan);
 
     // Start with five, dealt one after another so you can watch them arrive.
     void loadCardArt(board).then(() => { artLoaded = true; report(); });

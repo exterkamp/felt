@@ -1,5 +1,5 @@
 import './serve';
-import { CardSprite, buildDeck, defineScene, loadCardArt } from 'felt';
+import { CardSprite, buildDeck, defineScene } from 'felt';
 import { showCode } from './code';
 import { expose, standalone } from './kit';
 
@@ -17,7 +17,6 @@ export const scene = defineScene({
     const W = 560;
     const H = 700;
     const board = ctx.board({ parent: 'board', width: W, height: H, backgroundColor: '#13463a' });
-    void loadCardArt(board);
     const deck = buildDeck();
     let cards: { sprite: CardSprite; phase: number; speed: number; cx: number; cy: number; r: number }[] = [];
     let level = Number(new URLSearchParams(location.search).get('level') ?? 0);

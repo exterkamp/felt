@@ -1,7 +1,7 @@
 import './serve';
 import {
   CARD_HEIGHT, CARD_WIDTH, CardSprite, animatorOf, buildDeck, defineScene, flickCard, flipCard,
-  loadCardArt, seeded, shuffle, throwCard,
+  seeded, shuffle, throwCard,
 } from 'felt';
 import { showCode } from './code';
 import { expose, label, standalone } from './kit';
@@ -22,7 +22,6 @@ export const scene = defineScene({
   create(ctx) {
     showCode(ctx);
     const board = ctx.board({ parent: 'board', width: W, height: H, backgroundColor: '#13463a' });
-    void loadCardArt(board);
     const animator = animatorOf(board);
 
     // The ring: three circles, one picture.

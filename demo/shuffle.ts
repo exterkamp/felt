@@ -1,9 +1,9 @@
 import './serve';
 import {
-  CARD_WIDTH, Card, CardSprite, DEFAULT_DECK_THEME, RIFFLE_HAND_DEPTH, Stack, defineStack, loadCardArt, orderStack, riffleShuffle, shuffledDeck,
+  CARD_WIDTH, Card, CardSprite, RIFFLE_HAND_DEPTH, Stack, defineStack, orderStack, riffleShuffle, shuffledDeck,
 } from 'felt';
 import { showCode } from './code';
-import { expose, standalone } from './kit';
+import { button, expose, standalone } from './kit';
 import { defineScene } from 'felt';
 
 // A scene: run on its own page (standalone, below) or as one screen of the
@@ -21,7 +21,6 @@ export const scene = defineScene({
     const DECK: Stack = defineStack({ id: 'deck', x: 240, y: 210 });
 
     const board = ctx.board({ parent: 'board', width: WIDTH, height: HEIGHT, backgroundColor: '#13463a' });
-    void loadCardArt(board, { themes: [DEFAULT_DECK_THEME] });
 
     let cards: CardSprite[] = [];
     let busy = false;
@@ -105,10 +104,10 @@ export const scene = defineScene({
       if (note) note.textContent = text;
     }
 
-    document.getElementById('riffle')?.addEventListener('click', () => void go(1));
-    document.getElementById('slow')?.addEventListener('click', () => void go(1, 3));
-    document.getElementById('twice')?.addEventListener('click', () => void go(2));
-    document.getElementById('reset')?.addEventListener('click', () => lay());
+    button(ctx, 'riffle', () => void go(1));
+    button(ctx, 'slow', () => void go(1, 3));
+    button(ctx, 'twice', () => void go(2));
+    button(ctx, 'reset', () => lay());
 
     lay();
     expose({ board, cards: () => cards, go, bench, busy: () => busy });

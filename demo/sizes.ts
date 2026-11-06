@@ -4,7 +4,7 @@ import {
   buildDeck, cardFaceMetrics, loadCardArt,
 } from 'felt';
 import { showCode } from './code';
-import { expose, standalone } from './kit';
+import { button, expose, standalone } from './kit';
 import { defineScene } from 'felt';
 
 // A scene: run on its own page (standalone, below) or as one screen of the
@@ -99,18 +99,18 @@ export const scene = defineScene({
     }
     // #endregion
 
-    document.getElementById('flip')?.addEventListener('click', () => {
+    button(ctx, 'flip', () => {
       faceUp = !faceUp;
       for (const card of cards) card.setFaceUp(faceUp);
       report();
     });
-    document.getElementById('theme')?.addEventListener('click', () => {
+    button(ctx, 'theme', () => {
       theme = DECK_THEMES[(DECK_THEMES.indexOf(theme) + 1) % DECK_THEMES.length];
       // A theme is a palette, so switching is a render rather than a
       // download - and the sheets ask for their courts, at their own size.
       lay();
     });
-    document.getElementById('ranks')?.addEventListener('click', () => {
+    button(ctx, 'ranks', () => {
       sample = (sample + 1) % SAMPLES.length;
       lay();
     });

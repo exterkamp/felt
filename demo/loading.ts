@@ -3,7 +3,7 @@ import {
   CardSprite, DECK_THEMES, DeckTheme, LoadingStage, SUITS, RANKS, buildDeck, cardsReady, loadingReport,
 } from 'felt';
 import { showCode } from './code';
-import { expose, standalone } from './kit';
+import { button, expose, standalone } from './kit';
 import { fpsMeter } from 'felt';
 import { defineScene } from 'felt';
 
@@ -176,11 +176,11 @@ export const scene = defineScene({
 
     // --- the buttons ------------------------------------------------------------
 
-    document.getElementById('reload')!.addEventListener('click', () => location.reload());
-    document.getElementById('again')!.addEventListener('click', () => newBoard());
+    button(ctx, 'reload', () => location.reload());
+    button(ctx, 'again', () => newBoard());
 
     // #region Restyling without a flash
-    document.getElementById('restyle')!.addEventListener('click', () => {
+    button(ctx, 'restyle', () => {
       theme = DECK_THEMES[(DECK_THEMES.indexOf(theme) + 1) % DECK_THEMES.length];
       const started = performance.now();
       note(`${at()}  restyled to ${theme}: the old deck stays on show until the new one is finished`);
@@ -194,7 +194,7 @@ export const scene = defineScene({
     // #endregion
     });
 
-    document.getElementById('lose')!.addEventListener('click', () => {
+    button(ctx, 'lose', () => {
       const lose = board.canvas.getContext('webgl2')?.getExtension('WEBGL_lose_context');
       if (!lose) return note('no WEBGL_lose_context here');
       note(`${at()}  context lost on purpose`);

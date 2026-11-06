@@ -23,7 +23,7 @@ import {
   Board, CardSprite, Node, orderStack, loadCardArt, renderCourt, suitTexture,
 } from 'felt';
 import { showCode } from './code';
-import { expose, standalone } from './kit';
+import { button, expose, standalone } from './kit';
 import { defineScene } from 'felt';
 
 // A scene: run on its own page (standalone, below) or as one screen of the
@@ -379,15 +379,15 @@ export const scene = defineScene({
           }
         }
 
-        document.getElementById('prev')?.addEventListener('click', () => this.step(-1));
-        document.getElementById('next')?.addEventListener('click', () => this.step(1));
-        document.getElementById('reset')?.addEventListener('click', () => {
+        button(ctx, 'prev', () => this.step(-1));
+        button(ctx, 'next', () => this.step(1));
+        button(ctx, 'reset', () => {
           this.deck = defaults();
           this.showControls();
           this.build();
           this.report();
         });
-        document.getElementById('surprise')?.addEventListener('click', () => this.surprise());
+        button(ctx, 'surprise', () => this.surprise());
         document.getElementById('deuter')?.addEventListener('click', (event) => {
           const board = document.getElementById('board');
           const isOn = board?.classList.toggle('deuter') ?? false;

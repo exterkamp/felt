@@ -5,7 +5,7 @@ import {
   cardFaceMetrics, colorCss, loadCardArt, renderCourts,
 } from 'felt';
 import { showCode } from './code';
-import { expose, standalone } from './kit';
+import { button, expose, standalone } from './kit';
 import { defineScene } from 'felt';
 
 // A scene: run on its own page (standalone, below) or as one screen of the
@@ -90,11 +90,11 @@ export const scene = defineScene({
       width = Number((event.target as HTMLInputElement).value);
       lay();
     });
-    document.getElementById('suit')?.addEventListener('click', () => {
+    button(ctx, 'suit', () => {
       suit = SUITS[(SUITS.indexOf(suit) + 1) % SUITS.length];
       lay();
     });
-    document.getElementById('deck')?.addEventListener('click', () => {
+    button(ctx, 'deck', () => {
       theme = DECK_THEMES[(DECK_THEMES.indexOf(theme) + 1) % DECK_THEMES.length];
       paint();
     });

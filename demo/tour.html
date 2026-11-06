@@ -117,10 +117,12 @@
             frozen, back from the cache) and the art shared by every board. That
             is why the eight boards on this page share one loop and one set of
             card art.</li>
-          <li><code>loadCardArt(board)</code> asks for the card sheets: the
-            faces, the backs and the fonts they use. Cards made before the art
-            arrives are not drawn until their sheet is ready, so nothing pops
-            in half-painted.</li>
+          <li>Card art is fetched by the cards that need it. A card asks its
+            sheet for its face; the sheet fetches the suit art, the back and
+            the fonts, and renders the court portraits, and the card is not
+            drawn until its sheet is ready, so nothing pops in half-painted.
+            <code>loadCardArt(board)</code> is optional: it only starts that
+            sooner.</li>
         </ul>
         <div class="where">Where it lives: <code>src/scene/board.ts</code> (the board),
           <code>src/gl/renderer.ts</code> and <code>src/gl/shaders.ts</code> (the one draw),
