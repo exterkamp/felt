@@ -101,7 +101,7 @@ console.log(`smoking ${host}`);
 await send('Page.navigate', { url: `${host}/` });
 await sleep(700);
 const tiles = JSON.parse(await evaluate(`JSON.stringify([...document.querySelectorAll('a.demo')].map(a => a.href))`));
-check(tiles.length === 15, `the home screen lists fifteen demos (${tiles.length})`);
+check(tiles.length === 16, `the home screen lists sixteen demos (${tiles.length})`);
 let reachable = 0;
 let wayBack = 0;
 let boards = 0;
@@ -718,6 +718,35 @@ const panel = JSON.parse(await evaluate(`(async () => {
 })()`));
 check(panel.was && panel.open && panel.titles.length >= 2 && panel.code.includes('stacks.filter') && panel.api.includes('flickCard'),
   `the Code button opens the demo's own source, in regions (${panel.titles.length}: "${panel.titles[0]}"…), felt's names marked`);
+
+// --- the tour: a long page, a board per idea, its code inline ---------------
+console.log('\nthe tour');
+await open('tour.html', '__felt?.boards?.length === 8');
+const tour = JSON.parse(await evaluate(`(async () => {
+  const f = __felt; const wait = (ms) => new Promise(r => setTimeout(r, ms));
+  let t = performance.now();
+  while ([...document.querySelectorAll('pre[data-region]')].some(p => !p.textContent) && performance.now() - t < 4000) await wait(50);
+  const regions = [...document.querySelectorAll('pre[data-region]')].map(p => ({ title: p.dataset.region, lines: p.textContent.split('\\n').length }));
+  // A drag from the first column onto the second, on the drag board.
+  const b = f.board; b.canvas.scrollIntoView({ block: 'center' }); await wait(300);
+  const rect = b.canvas.getBoundingClientRect();
+  const page = (x, y) => ({ clientX: rect.left + x / b.width * rect.width, clientY: rect.top + y / b.height * rect.height });
+  const fire = (type, x, y) => b.canvas.dispatchEvent(new PointerEvent(type, { ...page(x, y), pointerId: 14, bubbles: true }));
+  const before = f.columns();
+  const from = { x: 100, y: 70 + 24 * (before[0] - 1) + 20 };
+  fire('pointerdown', from.x, from.y); await wait(120);
+  for (let i = 1; i <= 8; i++) { fire('pointermove', from.x + 140 * i / 8, from.y - 20 * i / 8); await wait(30); }
+  await wait(200); fire('pointerup', from.x + 140, from.y - 20); await wait(800);
+  // Every board but the blank one drew cards.
+  t = performance.now();
+  while (f.boards.slice(1).some(x => x.renderer.instanceCount === 0) && performance.now() - t < 5000) await wait(100);
+  return JSON.stringify({ regions, before, after: f.columns(), drawn: f.boards.map(x => x.renderer.instanceCount) });
+})()`));
+check(tour.regions.length === 9 && tour.regions.every(r => r.lines >= 2),
+  `the tour shows all nine sections' code, from its own source (${tour.regions.map(r => r.lines).join(', ')} lines)`);
+check(tour.drawn[0] === 0 && tour.drawn.slice(1).every(n => n > 0), `eight boards on one page, the first blank and the rest drawing (${tour.drawn.join(', ')})`);
+check(tour.after[0] === tour.before[0] - 1 && tour.after[1] === tour.before[1] + 1,
+  `a card dragged off one column lands on the next (${tour.before.join('·')} → ${tour.after.join('·')})`);
 
 // --- two seats: one game, three copies, in lockstep -------------------------
 console.log('\ntwo seats');

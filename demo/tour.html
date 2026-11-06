@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>felt — from a blank board</title>
+    <style>
+      @font-face { font-family: 'Cinzel'; src: url('./fonts/cinzel-latin.woff2') format('woff2'); font-weight: 400 900; font-display: block; }
+      @font-face { font-family: 'Jost'; src: url('./fonts/jost-latin.woff2') format('woff2'); font-weight: 300 700; font-display: block; }
+      @font-face { font-family: 'Archivo'; src: url('./fonts/archivo-latin.woff2') format('woff2'); font-weight: 500 700; font-display: block; }
+      html, body { margin: 0; min-height: 100%; background: #0b2119; color: #cfead0; font-family: 'Jost', system-ui, sans-serif; }
+      body { padding: 2.6rem 0.9rem 4rem; box-sizing: border-box; }
+      .tour { max-width: 46rem; margin: 0 auto; line-height: 1.6; font-size: 0.92rem; }
+      .tour h1 {
+        font-family: 'Cinzel', Georgia, serif; font-size: 1.5rem; letter-spacing: 0.06em; text-transform: uppercase;
+        color: #fdfdfd; margin: 0 0 0.4rem; text-align: center;
+      }
+      .tour .lede { text-align: center; color: #9fc4a4; margin: 0 auto 2rem; max-width: 36rem; }
+      .tour nav { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.35rem 0.9rem; margin: 0 0 2.6rem; font-size: 0.78rem; }
+      .tour nav a { color: #ffd166; text-decoration: none; }
+      .tour nav a:hover { text-decoration: underline; }
+      .tour section { margin: 0 0 3.4rem; scroll-margin-top: 1rem; }
+      .tour h2 {
+        font-family: 'Cinzel', Georgia, serif; font-size: 1.05rem; letter-spacing: 0.05em; text-transform: uppercase;
+        color: #fdfdfd; margin: 0 0 0.6rem; border-bottom: 1px solid #24594a; padding-bottom: 0.3rem;
+      }
+      .tour h2 .n { color: #ffd166; margin-right: 0.45rem; }
+      .tour p { margin: 0 0 0.8rem; }
+      .tour ul.points { margin: 0 0 0.9rem; padding-left: 1.2rem; }
+      .tour ul.points li { margin: 0 0 0.3rem; }
+      .tour code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.82em; color: #ffe3a3; }
+      .tour .where {
+        font-size: 0.78rem; color: #9fc4a4; border-left: 2px solid #ffd166; padding: 0.2rem 0 0.2rem 0.7rem; margin: 0 0 1rem;
+      }
+      .tour .where code { color: #cfead0; }
+      .tour .board {
+        width: 100%; max-width: 480px; margin: 1rem auto 0.5rem; touch-action: pan-y;
+        display: flex; justify-content: center;
+      }
+      /* Where a card is dragged, a touch is the card's, not a scroll. */
+      .tour .board.drag { touch-action: none; }
+      .tour .controls { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.45rem; margin: 0.4rem 0 0.6rem; }
+      .tour .controls label { font-size: 0.74rem; display: flex; align-items: center; gap: 0.35rem; color: #9fc4a4; }
+      .tour .controls input[type=range] { width: 7rem; accent-color: #ffd166; }
+      .tour .controls output { font-family: ui-monospace, monospace; font-size: 0.7rem; color: #cfead0; min-width: 2.8rem; }
+      .tour button {
+        font-family: 'Cinzel', Georgia, serif; font-size: 0.72rem; letter-spacing: 0.05em; text-transform: uppercase;
+        color: #fdfdfd; background: #17594a; border: 1px solid #cfead0; border-radius: 4px; padding: 0.35rem 0.75rem; cursor: pointer;
+      }
+      .tour button:hover, .tour button:focus-visible { border-color: #ffd166; color: #ffd166; }
+      .tour .status { text-align: center; font-family: ui-monospace, monospace; font-size: 0.72rem; color: #9fc4a4; margin: 0 0 0.8rem; min-height: 1.1em; }
+      .tour pre.code {
+        margin: 0.6rem 0 1rem; padding: 0.7rem 0.85rem; overflow-x: auto; background: #071a14;
+        border: 1px solid #24594a; border-radius: 5px;
+        font: 0.74rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: #dfeee0; tab-size: 2;
+      }
+      .tour pre.code::before {
+        content: attr(data-region); display: block; font-family: 'Jost', system-ui, sans-serif; font-size: 0.72rem;
+        color: #ffd166; margin: 0 0 0.45rem;
+      }
+      .tour pre.code .c { color: #6f9a7a; font-style: italic; }
+      .tour pre.code .s { color: #f2b880; }
+      .tour pre.code .n { color: #c9a8ff; }
+      .tour pre.code .k { color: #7fc8d8; }
+      .tour pre.code .api { color: #ffd166; font-weight: 600; }
+      .home {
+        position: fixed; top: 0.55rem; left: 0.6rem; z-index: 20;
+        font-family: 'Cinzel', Georgia, serif; font-size: 0.66rem; letter-spacing: 0.05em; text-transform: uppercase;
+        text-decoration: none; color: #fdfdfd; background: #17594a; border: 1px solid #cfead0;
+        border-radius: 4px; padding: 0.28rem 0.5rem; line-height: 1;
+      }
+      .home:hover, .home:focus-visible { border-color: #ffd166; color: #ffd166; }
+    </style>
+  </head>
+  <body>
+    <a class="home" href="./">&larr; Demos</a>
+    <main class="tour">
+      <h1>From a blank board</h1>
+      <p class="lede">
+        felt, one idea at a time: a board, a card, how a card is posed, stacks,
+        throwing cards onto them, dragging, hands, and flicking. Every section is
+        live, and the code under each board is that board's code, taken from
+        <code>demo/tour.ts</code> as it runs. Gold names are felt's.
+      </p>
+      <nav>
+        <a href="#t-board">1 · A board</a>
+        <a href="#t-card">2 · A card</a>
+        <a href="#t-pose">3 · Its pose</a>
+        <a href="#t-stack">4 · A stack</a>
+        <a href="#t-throw">5 · Onto a pile</a>
+        <a href="#t-drag">6 · Dragging</a>
+        <a href="#t-hand">7 · A hand</a>
+        <a href="#t-flick">8 · Flicking</a>
+        <a href="#t-scene">9 · The scene</a>
+      </nav>
+
+      <section id="t-board">
+        <h2><span class="n">1</span>A board</h2>
+        <p>
+          Everything is drawn on a <strong>board</strong>: one canvas with one
+          WebGL2 context. Its size, here 480 by 200, is in <em>board units</em>.
+          Positions, card sizes and speeds are all in those units. The canvas
+          is scaled to fit its parent, the way a game canvas is, so the same
+          board is crisp on a phone and on a 4K monitor. The backing store is
+          the board at the screen's pixel ratio.
+        </p>
+        <ul class="points">
+          <li>Every card on a board is <strong>one instance in one draw call</strong>.
+            Each card writes 32 floats (its pose, its art's place in a texture
+            array, its tint) into an instance buffer. The vertex shader bends it,
+            tips it and projects it.</li>
+          <li>A board draws only when something changed. Setting a card's
+            position calls <code>board.touch()</code>. With nothing touched,
+            no frames are drawn and the loop sleeps.</li>
+          <li>Boards don't run their own loop. They are members of the page's one
+            <code>engine()</code>, which owns time, the page lifecycle (hidden,
+            frozen, back from the cache) and the art shared by every board. That
+            is why the eight boards on this page share one loop and one set of
+            card art.</li>
+          <li><code>loadCardArt(board)</code> asks for the card sheets: the
+            faces, the backs and the fonts they use. Cards made before the art
+            arrives are not drawn until their sheet is ready, so nothing pops
+            in half-painted.</li>
+        </ul>
+        <div class="where">Where it lives: <code>src/scene/board.ts</code> (the board),
+          <code>src/gl/renderer.ts</code> and <code>src/gl/shaders.ts</code> (the one draw),
+          <code>src/runtime/engine.ts</code> (the loop), <code>src/art/card-art.ts</code> (the art).</div>
+        <div id="b-board" class="board" style="aspect-ratio: 480 / 200"></div>
+        <p class="status" id="s-board"></p>
+        <pre class="code" data-region="1. A board"></pre>
+      </section>
+
+      <section id="t-card">
+        <h2><span class="n">2</span>A card</h2>
+        <p>
+          A card is two things. The <strong>data</strong> is a plain object,
+          <code>{ id, rank, suit, faceUp }</code>, which is what a game's rules,
+          a save file or a network message deal in; <code>buildDeck()</code>
+          makes fifty-two. The <strong>sprite</strong>,
+          <code>new CardSprite(board, card)</code>, is that card on a board: a
+          node with a pose and a look (width, deck theme, face style), whose
+          face is a region of an atlas page painted once and shared by every
+          sprite that shows it.
+        </p>
+        <p>
+          Tap a card to turn it over. <code>flipCard</code> rolls it half a
+          turn about its own length, lifting it off the felt as it goes. It
+          runs on the card's <code>flip</code> channel with a <em>latest</em>
+          policy. Tap fast and the taps are not queued up as a string of flips:
+          they are debounced into the side you last asked for.
+        </p>
+        <div class="where">Where it lives: <code>src/core/cards.ts</code> (the data),
+          <code>src/art/card-sprite.ts</code> (the sprite), <code>src/play/flip.ts</code> (the flip),
+          <code>src/scene/animator.ts</code> (channels and policies).</div>
+        <div id="b-card" class="board" style="aspect-ratio: 480 / 200"></div>
+        <p class="status" id="s-card">Tap a card.</p>
+        <pre class="code" data-region="2. A card"></pre>
+      </section>
+
+      <section id="t-pose">
+        <h2><span class="n">3</span>Its pose</h2>
+        <p>
+          A card's place on the board is its <strong>pose</strong>. Every pose
+          field is a property you set directly. Each setter touches the board,
+          and the next frame draws the card where it now is. Nothing else is
+          needed: no tween, no update call.
+        </p>
+        <ul class="points">
+          <li><code>x</code>, <code>y</code>: its centre, in board units. <code>angle</code>:
+            its turn in the table's plane, in degrees.</li>
+          <li><code>z</code>: how far it is lifted towards the camera. A lifted card
+            casts a shadow on the felt, further away and softer the higher it is.</li>
+          <li><code>tilt</code> and <code>turn</code>: rotation out of the plane, in radians,
+            about its width and its length. Half a turn shows the other side,
+            which is what <code>flipCard</code> animates.</li>
+          <li><code>bow</code>: a bend down its length, as a fraction of its height,
+            used by the riffle shuffle.</li>
+          <li><code>depth</code>: draw order, not height. Higher draws in front.</li>
+        </ul>
+        <p>
+          The perspective comes from the board's <code>fov</code> (default 45°).
+          <code>board.setFov(0)</code> makes the board flat. The same pose then
+          draws without depth, and the board's <code>is3d</code> says which it is.
+        </p>
+        <div class="where">Where it lives: <code>src/scene/node.ts</code> (the pose),
+          <code>src/gl/lens.ts</code> (the projection, which <code>PROJECT</code> in the shader repeats).</div>
+        <div id="b-pose" class="board" style="aspect-ratio: 480 / 240"></div>
+        <div class="controls" id="pose">
+          <label>angle <input type="range" name="angle" min="-180" max="180" step="1" value="0" /><output>0</output></label>
+          <label>z <input type="range" name="z" min="0" max="60" step="1" value="0" /><output>0</output></label>
+          <label>tilt <input type="range" name="tilt" min="-1.4" max="1.4" step="0.01" value="0" /><output>0</output></label>
+          <label>turn <input type="range" name="turn" min="-3.14" max="3.14" step="0.01" value="0" /><output>0</output></label>
+          <label>bow <input type="range" name="bow" min="-0.3" max="0.3" step="0.01" value="0" /><output>0</output></label>
+          <button id="pose-flat">View: 3D</button>
+        </div>
+        <pre class="code" data-region="3. Its pose"></pre>
+      </section>
+
+      <section id="t-stack">
+        <h2><span class="n">4</span>A stack</h2>
+        <p>
+          A pile on the table is a <strong>Stack</strong>. It is data, not a
+          node: <code>defineStack({ id, x, y, fan, step, maxSpread, messy, order })</code>.
+          It holds no cards. It answers questions about cards: where its
+          <em>n</em>th card sits (<code>stackPositions</code>), which one is in
+          front (<code>topCardIndex</code>), and where the next would go
+          (<code>nextPosition</code>). The game keeps its own array of
+          sprites and asks.
+        </p>
+        <ul class="points">
+          <li><code>fan</code> runs it <code>'none'</code>, <code>'down'</code>, <code>'right'</code>,
+            <code>'left'</code> or <code>'up'</code>, by <code>step</code> units a card.
+            With <code>maxSpread</code> set, a pile that would outgrow it squeezes its step.</li>
+          <li><code>orderStack(sprites, stack)</code> sets each card's <code>depth</code>
+            so the right one draws in front: the newest for <code>'last-on-top'</code>,
+            the oldest for <code>'first-on-top'</code>.</li>
+          <li><code>messy</code> turns each card a little where it lies. The
+            amounts come from the card's place in the pile, so a messy pile
+            looks the same every time it is laid out.</li>
+        </ul>
+        <p>
+          Because it is pure geometry, the stack code is shared with the
+          Phaser engine this one replaced (<code>src/core</code> is that
+          engine's copy), and a server can run it without a board.
+        </p>
+        <div class="where">Where it lives: <code>src/core/stack.ts</code> (the geometry),
+          <code>src/play/order.ts</code> (<code>orderStack</code>).</div>
+        <div id="b-stack" class="board" style="aspect-ratio: 480 / 300"></div>
+        <div class="controls">
+          <button id="stack-fan">Fan: down</button>
+          <button id="stack-messy">Messy: off</button>
+          <button id="stack-more">One more</button>
+          <button id="stack-less">One fewer</button>
+        </div>
+        <pre class="code" data-region="4. A stack"></pre>
+      </section>
+
+      <section id="t-throw">
+        <h2><span class="n">5</span>Putting cards on piles</h2>
+        <p>
+          <code>throwCard(board, card, target)</code> flies a card through the
+          air to a target. The target can be a point on the felt, or
+          <code>{ stack, count }</code>, meaning "where this stack's card number
+          <em>count</em> goes". It lands exactly there, at that place's angle.
+          So when the card joins the array and the pile is laid out again,
+          nothing moves: the throw already ended where the layout puts it.
+        </p>
+        <ul class="points">
+          <li>A throw rises off the felt (<code>arc</code>), can spin
+            (<code>spins</code>) and gives a little pop when it lands
+            (<code>pop</code>). It resolves when it lands.</li>
+          <li><code>dealCards</code> is several throws, <code>stagger</code> ms apart,
+            each aimed at the next place in the pile.</li>
+          <li>Throws run on the card's <code>move</code> channel and interrupt
+            whatever was moving it, so throwing a card that is already in the
+            air retargets it rather than queueing.</li>
+        </ul>
+        <div class="where">Where it lives: <code>src/play/flight.ts</code> (<code>throwCard</code>,
+          <code>dealCards</code>, <code>flightDuration</code>).</div>
+        <div id="b-throw" class="board" style="aspect-ratio: 480 / 280"></div>
+        <div class="controls">
+          <button id="throw-one">Throw one</button>
+          <button id="throw-deal">Deal five</button>
+          <button id="throw-gather">Gather</button>
+        </div>
+        <p class="status" id="s-throw"></p>
+        <pre class="code" data-region="5. Onto a pile"></pre>
+      </section>
+
+      <section id="t-drag">
+        <h2><span class="n">6</span>Dragging</h2>
+        <p>
+          Set <code>card.draggable = true</code> and the board turns pointer
+          events on it into <code>dragstart</code>, <code>drag</code> and
+          <code>dragend</code>. It picks the node under the pointer, front to
+          back, as drawn. The board reports a drag and does nothing to the card:
+          the game moves it, so the game decides what can be moved and where
+          it goes.
+        </p>
+        <ul class="points">
+          <li><code>pointer.refuse()</code> in <code>dragstart</code> turns a drag
+            down. Here, only the card in front of a pile comes away.</li>
+          <li>On release, <code>stackUnder(cardRect(at), piles)</code> answers which
+            pile the card overlaps most. The card is moved into that pile's
+            array, or stays in its own, and both piles are laid out again.</li>
+          <li>On a board with perspective, a dragged card is <strong>picked up</strong>.
+            It rises off the felt and swings with the drag, and its shadow
+            falls away. That is an offset on the card, run by springs, and
+            the game never sees it. Turn it off with
+            <code>pickUp: false</code>.</li>
+        </ul>
+        <div class="where">Where it lives: <code>src/scene/board.ts</code> (pointers, picking, drag events),
+          <code>src/scene/pick-up.ts</code> (the lift and swing), <code>src/core/stack.ts</code> (<code>stackUnder</code>).</div>
+        <div id="b-drag" class="board drag" style="aspect-ratio: 480 / 260"></div>
+        <p class="status" id="s-drag">Drag the front card of a pile onto another pile.</p>
+        <pre class="code" data-region="6. Dragging"></pre>
+      </section>
+
+      <section id="t-hand">
+        <h2><span class="n">7</span>A hand</h2>
+        <p>
+          A <strong>Hand</strong> is the other kind of place: cards held in an
+          arc. <code>defineHand({ x, y, radius, step, maxSpread, facing })</code>
+          is, like a stack, only geometry. <code>handPositions(hand, n)</code>
+          places <em>n</em> cards round a grip <code>radius</code> units below,
+          <code>step</code> degrees apart, never wider than <code>maxSpread</code>.
+          <code>facing</code> turns the whole hand: 180 is a hand across the table.
+        </p>
+        <p>
+          A hand changes shape as it grows, so every card in it moves when one
+          joins. <code>layHand</code> tweens each card to its new place. A card
+          thrown in aims at the place it will have <em>in the bigger hand</em>
+          and is left out of the tween (<code>except</code>) while it flies.
+        </p>
+        <div class="where">Where it lives: <code>src/core/hand.ts</code> (the arc),
+          <code>src/play/order.ts</code> (<code>layHand</code>).</div>
+        <div id="b-hand" class="board" style="aspect-ratio: 480 / 280"></div>
+        <div class="controls">
+          <button id="hand-throw">Throw one in</button>
+          <button id="hand-take">Take one back</button>
+        </div>
+        <pre class="code" data-region="7. A hand"></pre>
+      </section>
+
+      <section id="t-flick">
+        <h2><span class="n">8</span>Flicking</h2>
+        <p>
+          Let go of a dragged card while it is still moving and it can keep
+          going. <code>pointer.velocity</code> is how fast the pointer moved
+          over its last tenth of a second, and zero if it had stopped.
+          <code>flickCard(board, card, velocity, options)</code> slides it to a
+          stop under friction. It hops off the felt if flicked hard, spins if
+          held off-centre, and bounces off <code>bounds</code>.
+        </p>
+        <p>
+          <code>magnets</code> are places it may land. Inside a magnet's reach
+          the card is pulled in and slowed, and if it stops there it is drawn
+          the rest of the way and squared up. <code>onRest(path)</code> says
+          which magnet caught it (<code>path.caught</code>). The game decides
+          which places are valid; here the one pile takes anything.
+        </p>
+        <p>
+          The whole path is worked out first, in fixed steps of 1/120 s
+          (<code>simulateFlick</code>). The same flick always goes the same way,
+          and a game can know where a card will stop before it gets there.
+        </p>
+        <div class="where">Where it lives: <code>src/play/flick.ts</code> (the physics and the magnets),
+          <code>trackVelocity</code> in <code>src/scene/board.ts</code>.</div>
+        <div id="b-flick" class="board drag" style="aspect-ratio: 480 / 360"></div>
+        <p class="status" id="s-flick">Pick up the top card and flick it at the pile.</p>
+        <pre class="code" data-region="8. Flicking"></pre>
+      </section>
+
+      <section id="t-scene">
+        <h2><span class="n">9</span>The scene around it</h2>
+        <p>
+          This page is one <strong>scene</strong>:
+          <code>defineScene({ name, create(ctx) { … } })</code>. Everything above
+          was made through <code>ctx</code>. The eight boards came from
+          <code>ctx.board()</code>, the buttons were wired with
+          <code>ctx.listen()</code>, and any timers would use
+          <code>ctx.delay()</code> or <code>ctx.every()</code>. So when the
+          scene ends, for example when you go back to the demos, all of it is
+          torn down, newest first, and nothing is left running.
+        </p>
+        <p>
+          A <code>Director</code> moves between scenes. In the demo app it runs
+          every demo as a scene on one warm engine, so the next demo starts
+          with the card art already painted. For multiplayer, the game itself
+          lives outside the boards in a <code>Simulation</code>: plain state,
+          changed only by commands at numbered ticks, the same on every copy.
+          The boards only animate what a tick changed. See the Two seats demo.
+        </p>
+        <div class="where">Where it lives: <code>src/runtime/scene.ts</code> (scenes, the director),
+          <code>src/runtime/disposables.ts</code> (teardown), <code>src/runtime/simulation.ts</code> (lockstep games),
+          and <code>docs/runtime.md</code> for why.</div>
+        <pre class="code" data-region="9. The scene"></pre>
+      </section>
+    </main>
+    <script type="module" src="./tour.ts"></script>
+  </body>
+</html>

@@ -159,3 +159,24 @@ export function showCode(ctx: SceneContext, name = ctx.name): void {
         + `<pre><code>${highlight(s.code, api)}</code></pre></details>`).join('');
   });
 }
+
+/**
+ * Fills every `<pre data-region="Title">` under the scene's root with that
+ * region of the demo's own source - the long-form pages, where the code sits
+ * in the text beside the board it runs. A title used more than once is one
+ * snippet in parts, joined with an ellipsis.
+ */
+export function showRegions(ctx: SceneContext, name = ctx.name): void {
+  const load = sources[`./${name}.ts`];
+  if (!load) return;
+  void load().then((source) => {
+    if (ctx.ended) return;
+    const api = feltNames(source);
+    const parts = new Map<string, string[]>();
+    for (const s of snippetsOf(source)) parts.set(s.title, [...(parts.get(s.title) ?? []), s.code]);
+    for (const pre of ctx.root.querySelectorAll<HTMLElement>('pre[data-region]')) {
+      const code = parts.get(pre.dataset.region!);
+      pre.innerHTML = code ? `<code>${highlight(code.join('\n  // …\n'), api)}</code>` : '';
+    }
+  });
+}

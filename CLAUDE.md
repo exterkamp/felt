@@ -20,7 +20,10 @@ when the scene ends. No raw `setTimeout` or `requestAnimationFrame` in demos.
 Every demo is a scene (`defineScene` + `standalone(scene)`), calls
 `showCode(ctx)`, and wraps the code its feature is in with `// #region Title`
 / `// #endregion` - the Code panel (`demo/code.ts`) shows those regions from
-the demo's own source, so keep them on the code that matters.
+the demo's own source, so keep them on the code that matters. The tour
+(`demo/tour.ts`, "From a blank board") instead calls `showRegions(ctx)`, which
+fills each `<pre data-region="Title">` in its page with that region; change
+its prose in `tour.html` when the code it explains changes.
 
 The projection is written twice — `src/gl/lens.ts` and `PROJECT` in
 `src/gl/shaders.ts` — and picking/`deckCentre` depend on them agreeing.
