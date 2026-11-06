@@ -40,6 +40,7 @@ export { lensDistance, project, cardRotation, unprojectOntoPlane } from './gl/le
 
 export { CardSprite } from './art/card-sprite.js';
 export { cardsReady, loadingReport } from './art/loading.js';
+export { PERSISTED_ART_VERSION, PersistedArt } from './art/persisted-art.js';
 export type { LoadingReport, LoadingStage, LoadingStageId } from './art/loading.js';
 export type { ArtKind, ArtStatus } from './art/card-art.js';
 export { BackSheet, CardSheets, FaceSheet, resolveStyle } from './art/card-sheets.js';

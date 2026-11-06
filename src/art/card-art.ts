@@ -2,6 +2,7 @@ import type { Painter, Region } from '../gl/atlas.js';
 import type { Board } from '../scene/board.js';
 import { Engine, serviceOf } from '../runtime/engine.js';
 import { disposeCourtWorker } from './court-worker.js';
+import { PersistedArt } from './persisted-art.js';
 import {
   DEFAULT_DECK_THEME, DeckTheme, cardAssetBase, colorCss, deckThemePath, fontsReady,
 } from '../core/index.js';
@@ -120,6 +121,10 @@ export class ArtStore {
   private readonly known = new Set<string>();
   private readonly listeners = new Set<StoreListener>();
   readonly courts: CourtCaches = { sources: new Map(), pages: new Map(), inFlight: new Map() };
+  /** Court portraits kept between visits (IndexedDB). */
+  readonly persisted = new PersistedArt();
+  /** Whether to keep and reuse pictures between visits. Default true. */
+  persist = true;
   /** Goes up whenever where any art is changes. */
   version = 0;
 

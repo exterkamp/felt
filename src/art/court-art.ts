@@ -90,7 +90,20 @@ export async function renderCourt(
   const flying = art.store.courts.inFlight;
   const pending = flying.get(key);
   if (pending) return pending;
-  const job = renderCourtOnce(board, key, rank, suit, palette, width, cut);
+  const job = (async () => {
+    // Kept from an earlier visit: drawn from there, not made again. A
+    // second of rasterising on every page load, gone.
+    const store = art.store;
+    const kept = store.persist ? await store.persisted.get(key) : undefined;
+    if (kept) {
+      if (!art.has(key)) art.provide(key, kept);
+      return key;
+    }
+    const done = await renderCourtOnce(board, key, rank, suit, palette, width, cut);
+    const made = art.get(key);
+    if (made && store.persist) void store.persisted.put(key, made);
+    return done;
+  })();
   // Known to be coming, so a face painted without it is not finished yet.
   art.expect(key, job);
   flying.set(key, job);

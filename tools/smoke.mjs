@@ -336,6 +336,25 @@ const warm = JSON.parse(await evaluate(`(async () => {
 check(warm.sameEngine && warm.newCanvas && warm.oldDestroyed, 'a board destroyed and made again runs on the same engine');
 check(warm.newArt === 0 && warm.second < warm.first / 2 && warm.drawn === 52,
   `and starts warm: no art fetched again, ready in ${Math.round(warm.second)} ms against ${Math.round(warm.first)} cold`);
+// A page load later, the portraits come from IndexedDB instead of being made.
+// Cleared first, since the stacks page has already kept the same courts.
+const courtsOn = async () => {
+  await until(`__felt.loadingReport().ready`, 20000);
+  await sleep(800);   // the PNG writes, after the courts land
+  return JSON.parse(await evaluate(`JSON.stringify((() => {
+    const r = __felt.loadingReport(); const store = __felt.board.engine.services.get('art-store');
+    return { courts: r.stages.find(st => st.id === 'courts')?.finishedAt, readyAt: r.readyAt,
+      hits: store.persisted.hits, misses: store.persisted.misses, writes: store.persisted.writes };
+  })())`));
+};
+await evaluate(`__felt.board.engine.services.get('art-store').persisted.clear()`);
+await open('loading.html', '!!window.__felt?.frames');
+const cold = await courtsOn();
+await open('loading.html', '!!window.__felt?.frames');
+const kept = await courtsOn();
+check(cold.misses >= 12 && cold.writes >= 12, `a cold load makes the twelve courts and keeps them (${cold.writes} kept)`);
+check(kept.hits >= 12 && kept.misses === 0 && kept.courts < cold.courts,
+  `the next load draws them from the last visit: courts at ${Math.round(kept.courts)} ms against ${Math.round(cold.courts)} ms, ready at ${Math.round(kept.readyAt)} against ${Math.round(cold.readyAt)}`);
 
 // --- one stack: canned animations tapped fast ------------------------------
 console.log('\none stack');
