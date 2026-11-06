@@ -1,4 +1,8 @@
 import {
+  BASE_CARD_WIDTH,
+  CardFaceMetrics,
+  DEFAULT_FACE_STYLE,
+  cardFaceMetrics,
   CourtPalette,
   courtHighlight,
   courtPaper,
@@ -302,10 +306,11 @@ async function paintInWorker(
     out.height = outHeight;
     const pen = out.getContext('2d', CPU);
     if (!pen) throw new Error('court art: no 2d context');
-    pen.drawImage(painted, 0, 0);
+    if (painted instanceof ImageBitmap) pen.drawImage(painted, 0, 0);
+    else pen.putImageData(painted, 0, 0);
     art.provide(key, out);
   } finally {
-    painted.close();
+    if (painted instanceof ImageBitmap) painted.close();
   }
 }
 
@@ -333,7 +338,11 @@ function cssRgb(css: string): [number, number, number] {
 export interface RenderCourtsOptions {
   /** Which suits to draw courts for. Defaults to the standard four. */
   suits?: readonly string[];
-  /** The raster width, in texture pixels. */
+  /**
+   * The raster width, in texture pixels. Default: what a default-size
+   * card's sheet asks for on this board (`courtWidthFor`). A game drawing
+   * other sizes leaves the courts to the sheets, which ask for their own.
+   */
   width?: number;
   /**
    * One figure or both - see `CourtCut`.
@@ -372,11 +381,33 @@ const DEFAULT_SUITS = ['spades', 'hearts', 'diamonds', 'clubs'] as const;
  * rasterising actually costs - the rest is the loop, and the way to not pay
  * it is to not go round the loop twelve times.
  */
+/**
+ * The widths courts are rasterised at. A few, so cards of nearby sizes share
+ * one render, and never more than 480 - what every court used to be.
+ */
+export const COURT_RASTERS = [120, 240, 480] as const;
+
+/**
+ * The court raster a face needs: a quarter again the portrait's drawn width
+ * in device pixels, rounded up to one of `COURT_RASTERS`.
+ *
+ * Every court used to be rasterised 480 wide whatever the card. A 46-unit
+ * card draws its portrait about 30 pixels across, so that was sixteen times
+ * the pixels needed - in SVG rasterising, which is the slowest thing a cold
+ * start does, and then in halving them all back down.
+ */
+export function courtWidthFor(metrics: CardFaceMetrics, ratio: number): number {
+  const need = metrics.width * metrics.court.panel * ratio * 1.25;
+  return COURT_RASTERS.find((w) => w >= need) ?? COURT_RASTERS[COURT_RASTERS.length - 1];
+}
+
 export async function renderCourts(
   board: Board, palette: CourtPalette, options: RenderCourtsOptions = {},
 ): Promise<void> {
   const suits = options.suits ?? DEFAULT_SUITS;
-  const width = options.width ?? 480;
+  // The size a default card's sheet on this board will ask for, so a deck
+  // rendered early is the one the faces use.
+  const width = options.width ?? courtWidthFor(cardFaceMetrics(BASE_CARD_WIDTH, DEFAULT_FACE_STYLE), board.pixelRatio);
   const cuts = typeof options.cut === 'string' ? [options.cut] : options.cut ?? ['half'];
   const wanted = cuts.flatMap((cut) =>
     COURT_RANKS.flatMap((rank) => suits.map((suit) => ({ rank, suit, cut }))));

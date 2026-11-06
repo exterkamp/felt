@@ -42,6 +42,28 @@ export class CardSprite<S extends string = Suit> extends Node {
    * one's sheets are finished too. Held, so the engine keeps it.
    */
   private held?: { faces: FaceSheet; backs: BackSheet };
+  /**
+   * The face last looked up, and what it was looked up for. Asked twice a
+   * frame per card (prepare, then draw), and each ask built a string key
+   * and hit a map: a lookup only when the card or its sheet has changed.
+   * A sheet's cells live as long as the sheet, and a card holds its sheets.
+   */
+  private faceSheet?: FaceSheet;
+  private faceSuit = '';
+  private faceRank = '';
+  private faceRegion?: Region;
+
+  private face(sheet: FaceSheet): Region {
+    const { suit, rank } = this.card;
+    if (sheet === this.faceSheet && suit === this.faceSuit && rank === this.faceRank) return this.faceRegion!;
+    const region = sheet.cell(suit, rank);
+    this.faceSheet = sheet;
+    this.faceSuit = suit;
+    this.faceRank = rank;
+    this.faceRegion = region;
+    return region;
+  }
+
   /** Its own sheets, in the shape `drawn` answers with - kept, not made per frame. */
   private readonly current: { faces: FaceSheet; backs: BackSheet };
 
@@ -189,7 +211,7 @@ export class CardSprite<S extends string = Suit> extends Node {
   /** Makes sure the face it shows is painted, before the frame is drawn. */
   override prepare(): void {
     const frame = this.boardFrames();
-    this.faces.cell(this.card.suit, this.card.rank).shownAt = frame;
+    this.face(this.faces).shownAt = frame;
     this.backs.region.shownAt = frame;
     if (this.held) {
       this.held.faces.cell(this.card.suit, this.card.rank).shownAt = frame;
@@ -213,8 +235,13 @@ export class CardSprite<S extends string = Suit> extends Node {
     super.destroy();
   }
 
+  /** A drawn card is solid: nothing exactly under it shows. */
+  override opaqueBody(): boolean {
+    return this._visible && this._alpha >= 1 && this.drawn() !== undefined;
+  }
+
   writeInstance(out: Float32Array, o: number): boolean {
-    if (!this._visible || this._alpha <= 0) return false;
+    if (!this._visible || this._alpha <= 0 || this.occluded) return false;
     // Not drawn at all until its art is finished: no card is ever seen
     // half-painted and then filling in.
     const sheets = this.drawn();
@@ -224,7 +251,7 @@ export class CardSprite<S extends string = Suit> extends Node {
     // Asked of the sheet every frame, so a card whose rank or suit changed
     // shows the new face with nobody telling it to. `prepare` has already
     // had it painted, so this is a lookup.
-    const face = sheets.faces.cell(this.card.suit, this.card.rank);
+    const face = this.face(sheets.faces);
     const backRegion = sheets.backs.region;
     const front = up ? face : backRegion;
     const back = up ? backRegion : face;

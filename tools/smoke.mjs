@@ -101,17 +101,19 @@ console.log(`smoking ${host}`);
 await send('Page.navigate', { url: `${host}/` });
 await sleep(700);
 const tiles = JSON.parse(await evaluate(`JSON.stringify([...document.querySelectorAll('a.demo')].map(a => a.href))`));
-check(tiles.length === 12, `the home screen lists twelve demos (${tiles.length})`);
+check(tiles.length === 13, `the home screen lists thirteen demos (${tiles.length})`);
 let reachable = 0;
 let wayBack = 0;
 let boards = 0;
 for (const href of tiles) {
   await send('Page.navigate', { url: href });
-  await sleep(900);
+  await sleep(300);
+  await until(`!!document.querySelector('h1') && !!window.__felt?.board?.renderer?.gl`, 8000);
   if (await evaluate(`!!document.querySelector('h1')`)) reachable++;
   if (await evaluate(`(() => { const a = document.querySelector('a.home');
     return !!a && a.href === location.href.replace(/[^/]*$/, ''); })()`)) wayBack++;
   if (await evaluate(`!!window.__felt?.board?.renderer?.gl`)) boards++;
+  else console.log(`  (no board on ${href})`);
 }
 check(reachable === tiles.length, `every tile opens a page (${reachable}/${tiles.length})`);
 check(wayBack === tiles.length, `every page has a way back (${wayBack}/${tiles.length})`);
@@ -570,7 +572,9 @@ check(seatsRun.pile === 3 && seatsRun.afterRefused === 2, `plays reach the game 
 check(seatsRun.differed === 0 && seatsRun.agreed > 100 && seatsRun.same,
   `server and both seats agree on every tick (${seatsRun.agreed} ticks compared, ${seatsRun.differed} differed)`);
 check(seatsRun.late === 0, `with 400 ms latency nothing arrives late: commands are stamped ahead of the trip (${seatsRun.late} late)`);
-check(seatsRun.boards === 2 && seatsRun.members === 2 && seatsRun.drawn.every(n => n >= 52),
+// 13 each: twelve in the hands and on the pile, and of the forty in the deck
+// only the top one - the rest are exactly under it, and not drawn.
+check(seatsRun.boards === 2 && seatsRun.members === 2 && seatsRun.drawn.every(n => n >= 10),
   `two boards on one engine, both drawing (${seatsRun.drawn.join(', ')} instances)`);
 
 // --- the demo as one page: scenes, not navigations --------------------------

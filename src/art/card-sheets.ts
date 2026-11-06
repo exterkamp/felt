@@ -9,7 +9,7 @@ import {
 import {
   ArtLookup, CardArt, FONT_ASSET, STANDARD_SUIT_ART, backAssetKey, ensureArt,
 } from './card-art.js';
-import { courtTextureKey, renderCourt } from './court-art.js';
+import { courtTextureKey, courtWidthFor, renderCourt } from './court-art.js';
 
 // The engine's card sheets: every card picture on the table, owned in one
 // place.
@@ -52,7 +52,11 @@ export interface CardStyle {
   suitArt?: Readonly<Record<string, string>>;
   /** The court palette, for a deck that is not one of the themes. */
   courtPalette?: CourtPalette;
-  /** The raster width the courts were rendered at. Defaults to 480. */
+  /**
+   * The raster width the courts are rendered at. Default: the smallest of
+   * `COURT_RASTERS` that covers the portrait as drawn on this card, at this
+   * density (`courtWidthFor`).
+   */
   courtWidth?: number;
   /** Texture pixels per unit. Defaults to the board's own ratio. */
   pixelRatio?: number;
@@ -352,7 +356,9 @@ export function resolveStyle(style: CardStyle, boardRatio: number): ResolvedStyl
     // spades came out near-black would be a black pip on near-black stock.
     ink: style.ink ?? themeInk(theme),
     palette,
-    courtWidth: style.courtWidth ?? 480,
+    courtWidth: style.courtWidth ?? courtWidthFor(
+      cardFaceMetrics(style.width ?? BASE_CARD_WIDTH, style.face ?? DEFAULT_FACE_STYLE),
+      style.pixelRatio ?? boardRatio),
     ratio: style.pixelRatio ?? boardRatio,
     suitArt: style.suitArt ?? STANDARD_SUIT_ART,
   };

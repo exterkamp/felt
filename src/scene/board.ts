@@ -317,6 +317,9 @@ export class Board implements EngineMember {
     // Anything touched while a frame is being drawn - a face painted in the
     // pre-pass - is in this frame already; asking for another would draw it twice.
     if (this.rendering) return;
+    // Already owed a frame: every setter of every card calls this, and four
+    // of them on four thousand cards a frame was sixteen thousand wakes.
+    if (this.dirty) return;
     this.dirty = true;
     this.wake();
   }
@@ -608,7 +611,7 @@ export class Board implements EngineMember {
 
     if (this.dirty) {
       this.dirty = false;
-      this.render();
+      this.drawFrame();
     }
     this.frameWork = performance.now() - started;
     return updating || tweening || this.awake > 0 || this.dirty;
@@ -617,6 +620,15 @@ export class Board implements EngineMember {
   /** Draws now, whatever the loop thinks. */
   render(): void {
     for (const run of this.beforeFrame) run();
+    this.drawFrame();
+  }
+
+  /**
+   * The drawing half of a frame, after the before-frame work. The loop runs
+   * that work itself, first, so it ran twice a frame when this did it too:
+   * double the warming budget, and every owed repaint checked twice.
+   */
+  private drawFrame(): void {
     this.sort();
     this.rendering = true;
     try {
@@ -629,6 +641,7 @@ export class Board implements EngineMember {
         if (!item.visible) continue;
         item.prepare();
         item.covered = above !== undefined && item.sameFootprint(above);
+        item.occluded = item.covered && above!.opaqueBody();
         above = item;
       }
       this.draw();

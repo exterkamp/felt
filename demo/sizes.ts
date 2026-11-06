@@ -1,7 +1,7 @@
 import './serve';
 import {
-  Card, CardSprite, COURT_PALETTES, DECK_THEMES, DeckTheme, DISPLAY_FONT, Rank, Sprite, Suit,
-  buildDeck, cardFaceMetrics, loadCardArt, renderCourts,
+  Card, CardSprite, DECK_THEMES, DeckTheme, DISPLAY_FONT, Rank, Sprite, Suit,
+  buildDeck, cardFaceMetrics, loadCardArt,
 } from 'felt';
 import { expose, standalone } from './kit';
 import { defineScene } from 'felt';
@@ -33,7 +33,6 @@ export const scene = defineScene({
     let labels: Sprite[] = [];
 
     void loadCardArt(board, { themes: DECK_THEMES });
-    void renderCourts(board, COURT_PALETTES[theme]);
 
     function lay(): void {
       for (const card of cards) card.destroy();
@@ -101,8 +100,8 @@ export const scene = defineScene({
     });
     document.getElementById('theme')?.addEventListener('click', () => {
       theme = DECK_THEMES[(DECK_THEMES.indexOf(theme) + 1) % DECK_THEMES.length];
-      // A theme is a palette, so switching is a render rather than a download.
-      void renderCourts(board, COURT_PALETTES[theme]);
+      // A theme is a palette, so switching is a render rather than a
+      // download - and the sheets ask for their courts, at their own size.
       lay();
     });
     document.getElementById('ranks')?.addEventListener('click', () => {

@@ -99,6 +99,7 @@ export class Sprite extends Node {
   }
 
   writeInstance(out: Float32Array, o: number): boolean {
+    if (this.occluded) return false;
     const region = this._region;
     if (!this._visible || this._alpha <= 0 || !region) return false;
     const p = this.writePose(out, o);

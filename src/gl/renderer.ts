@@ -97,8 +97,24 @@ export class Renderer {
   private cardUniforms!: Uniforms;
   private meshUniforms!: Uniforms;
   private cardVao!: WebGLVertexArrayObject;
-  private instanceBuffer!: WebGLBuffer;
+  /**
+   * Instance buffers, used in turn. Re-specifying one buffer every frame
+   * (bufferData) makes the driver wait whenever the GPU is still reading the
+   * last frame's copy - measured as 10 ms a frame stalled at four thousand
+   * cards. Three, each kept at its size and filled with bufferSubData, means
+   * the one being written is never the one being drawn from.
+   */
+  private instanceBuffers: WebGLBuffer[] = [];
+  private instanceCapacity: number[] = [];
+  private instanceTurn = 0;
+  private get instanceBuffer(): WebGLBuffer {
+    return this.instanceBuffers[this.instanceTurn];
+  }
   private indexCount = 0;
+  /** Byte offset of the flat card's six indices, after the bowed grid's. */
+  private quadOffset = 0;
+  /** Draws in the last frame that could use the flat quad. */
+  flatDraws = 0;
   /**
    * Bumped every time the GPU's objects are made again. Anything holding a
    * buffer of its own - a tuck box's meshes - compares against it.
@@ -169,6 +185,11 @@ export class Renderer {
       index.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
     }
     this.indexCount = index.length;
+    // And the same card as one quad - its first row's top corners and its
+    // last row's bottom ones - for any draw in which no card is bowed.
+    const last = CARD_ROWS * 2;
+    this.quadOffset = index.length * 2;
+    index.push(0, 1, last, 1, last + 1, last);
 
     this.cardVao = gl.createVertexArray()!;
     gl.bindVertexArray(this.cardVao);
@@ -180,7 +201,9 @@ export class Renderer {
     const indexBuffer = gl.createBuffer()!;
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(index), gl.STATIC_DRAW);
-    this.instanceBuffer = gl.createBuffer()!;
+    this.instanceBuffers = [gl.createBuffer()!, gl.createBuffer()!, gl.createBuffer()!];
+    this.instanceCapacity = [0, 0, 0];
+    this.instanceTurn = 0;
     gl.bindBuffer(gl.ARRAY_BUFFER, this.instanceBuffer);
     for (let i = 1; i <= 8; i++) {
       gl.enableVertexAttribArray(i);
@@ -323,25 +346,39 @@ export class Renderer {
       this.instances = new Float32Array(Math.max(items.length, this.instances.length / INSTANCE_FLOATS * 2)
         * INSTANCE_FLOATS);
     }
-    const runs: ({ first: number; count: number } | MeshItem)[] = [];
+    const runs: ({ first: number; count: number; bowed: boolean } | MeshItem)[] = [];
     let count = 0;
     let runStart = 0;
+    let bowed = false;
+    const instances = this.instances;
     for (const item of items) {
       if (item.drawKind === 'mesh') {
-        if (count > runStart) runs.push({ first: runStart, count: count - runStart });
+        if (count > runStart) runs.push({ first: runStart, count: count - runStart, bowed });
         runs.push(item);
         runStart = count;
+        bowed = false;
         continue;
       }
-      if (item.writeInstance(this.instances, count * INSTANCE_FLOATS)) count++;
+      if (item.writeInstance(instances, count * INSTANCE_FLOATS)) {
+        // A bow is the only thing the grid's rows are for.
+        if (instances[count * INSTANCE_FLOATS + 6] !== 0) bowed = true;
+        count++;
+      }
     }
-    if (count > runStart) runs.push({ first: runStart, count: count - runStart });
+    if (count > runStart) runs.push({ first: runStart, count: count - runStart, bowed });
     this.instanceCount = count;
     this.drawCalls = 0;
+    this.flatDraws = 0;
 
+    this.instanceTurn = (this.instanceTurn + 1) % this.instanceBuffers.length;
     gl.bindBuffer(gl.ARRAY_BUFFER, this.instanceBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, this.instances.subarray(0, Math.max(1, count) * INSTANCE_FLOATS),
-      gl.STREAM_DRAW);
+    const used = Math.max(1, count) * INSTANCE_FLOATS;
+    if (this.instanceCapacity[this.instanceTurn] < used) {
+      // Grown to the whole CPU-side array, so it is not grown again soon.
+      gl.bufferData(gl.ARRAY_BUFFER, this.instances.byteLength, gl.DYNAMIC_DRAW);
+      this.instanceCapacity[this.instanceTurn] = this.instances.length;
+    }
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.instances, 0, used);
 
     for (const run of runs) {
       if ('drawKind' in run) {
@@ -356,7 +393,12 @@ export class Renderer {
       gl.uniform1f(this.cardUniforms['u_frontFacing'], 1);
       gl.bindVertexArray(this.cardVao);
       this.pointInstances(run.first);
-      gl.drawElementsInstanced(gl.TRIANGLES, this.indexCount, gl.UNSIGNED_SHORT, 0, run.count);
+      if (run.bowed) {
+        gl.drawElementsInstanced(gl.TRIANGLES, this.indexCount, gl.UNSIGNED_SHORT, 0, run.count);
+      } else {
+        gl.drawElementsInstanced(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, this.quadOffset, run.count);
+        this.flatDraws++;
+      }
       this.drawCalls++;
     }
     gl.bindVertexArray(null);
@@ -404,7 +446,7 @@ export class Renderer {
     // A lost context has nothing left to free, and says so by erroring.
     if (gl.isContextLost()) return;
     if (this.texture) gl.deleteTexture(this.texture);
-    gl.deleteBuffer(this.instanceBuffer);
+    for (const buffer of this.instanceBuffers) gl.deleteBuffer(buffer);
     gl.deleteVertexArray(this.cardVao);
     gl.deleteProgram(this.cardProgram);
     gl.deleteProgram(this.meshProgram);

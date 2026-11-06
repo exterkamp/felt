@@ -60,8 +60,11 @@ The things phaser-card-engine had to work round are the reasons for this:
 Measured, in the same software-rendered headless Chrome: the hold'em riffle
 runs at **54 ms a frame against Phaser's 176**, the whole engine plus core is
 **21 kB gzipped** against Phaser's 331 kB, and the stacks page - 52 cards,
-every label, every slot - is **79 instances in 1 draw call**. A still board
-draws **0** frames.
+every label, every slot - is **74 instances in 1 draw call** (a squared pile is drawn as its top card:
+the cards exactly under an opaque one are skipped). A still board draws **0**
+frames. On the stress page, 4160 cards all moving every frame cost **2.5 ms**
+of CPU a frame, flat or in 3D. A cold start is ready in about 0.6 s, and a
+load with the courts kept from the last visit in about 0.2 s.
 
 ## Flat or 3D: the lens
 

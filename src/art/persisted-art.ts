@@ -150,10 +150,76 @@ export class PersistedArt {
   }
 }
 
-function encode(source: Source): Promise<Blob | undefined> {
-  const canvas = source as HTMLCanvasElement;
-  if (typeof canvas.toBlob === 'function') {
-    return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob ?? undefined), 'image/png'));
+/**
+ * PNG encoding is slow - 38 ms a court on the main thread, measured, which
+ * was a third of a cold start - so it is done in a worker on a bitmap copy.
+ * The main thread pays for the copy only. Without workers or OffscreenCanvas,
+ * it waits for an idle moment and encodes there.
+ */
+let encoder: { worker: Worker; next: number; waiting: Map<number, (blob: Blob | undefined) => void> } | undefined;
+
+const ENCODER_SOURCE = `
+self.onmessage = async (event) => {
+  const { id, bitmap } = event.data;
+  try {
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    canvas.getContext('2d').drawImage(bitmap, 0, 0);
+    bitmap.close();
+    const blob = await canvas.convertToBlob({ type: 'image/png' });
+    self.postMessage({ id, blob });
+  } catch (error) {
+    self.postMessage({ id, blob: null });
   }
-  return Promise.resolve(undefined);
+};`;
+
+function encoderWorker(): typeof encoder {
+  if (encoder) return encoder;
+  if (typeof Worker === 'undefined' || typeof OffscreenCanvas === 'undefined'
+    || typeof createImageBitmap !== 'function') return undefined;
+  try {
+    const url = URL.createObjectURL(new Blob([ENCODER_SOURCE], { type: 'text/javascript' }));
+    const worker = new Worker(url);
+    const waiting = new Map<number, (blob: Blob | undefined) => void>();
+    worker.onmessage = (event: MessageEvent<{ id: number; blob: Blob | null }>) => {
+      waiting.get(event.data.id)?.(event.data.blob ?? undefined);
+      waiting.delete(event.data.id);
+    };
+    worker.onerror = () => {
+      for (const resolve of waiting.values()) resolve(undefined);
+      waiting.clear();
+    };
+    encoder = { worker, next: 1, waiting };
+    return encoder;
+  } catch {
+    return undefined;
+  }
+}
+
+async function encode(source: Source): Promise<Blob | undefined> {
+  const pool = encoderWorker();
+  if (pool) {
+    try {
+      const bitmap = await createImageBitmap(source);
+      const id = pool.next++;
+      return await new Promise((resolve) => {
+        pool.waiting.set(id, resolve);
+        pool.worker.postMessage({ id, bitmap }, [bitmap]);
+      });
+    } catch {
+      // Fall through to the main thread.
+    }
+  }
+  const canvas = source as HTMLCanvasElement;
+  if (typeof canvas.toBlob !== 'function') return undefined;
+  await idle();
+  return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob ?? undefined), 'image/png'));
+}
+
+function idle(): Promise<void> {
+  return new Promise((resolve) => {
+    const ric = (globalThis as { requestIdleCallback?: (fn: () => void, o?: { timeout: number }) => void })
+      .requestIdleCallback;
+    if (ric) ric(() => resolve(), { timeout: 2000 });
+    else setTimeout(resolve, 200);
+  });
 }

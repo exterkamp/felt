@@ -46,6 +46,8 @@ export interface CourtJob {
 
 export type CourtReply =
   | { id: number; bitmap: ImageBitmap }
+  /** Pixels rather than a bitmap: see the worker body. */
+  | { id: number; pixels: ImageData }
   | { id: number; error: string };
 
 /** The whole of the worker. Self-contained: it is stringified. */
@@ -75,14 +77,16 @@ function courtWorkerBody(partBackgroundPixels: (
       const { crop } = job;
       outPen.drawImage(page, crop.x, crop.y, crop.width, crop.height,
         0, 0, job.width, job.height);
+      // Pixels, read here, rather than a bitmap of the canvas: the bitmap may
+      // live on the GPU, and the page draws courts into CPU canvases, so it
+      // would be read back there - on the main thread, in the middle of
+      // painting faces. Measured, that was 400 ms of a cold start.
+      const image = outPen.getImageData(0, 0, job.width, job.height);
       if (job.part) {
-        const image = outPen.getImageData(0, 0, job.width, job.height);
         partBackgroundPixels(image.data, job.width, job.height,
           job.part.from, job.part.to, job.part.seeds);
-        outPen.putImageData(image, 0, 0);
       }
-      const bitmap = out.transferToImageBitmap();
-      scope.postMessage({ id: job.id, bitmap }, [bitmap]);
+      scope.postMessage({ id: job.id, pixels: image }, [image.data.buffer]);
     } catch (error) {
       scope.postMessage({ id: job.id, error: String(error) }, []);
     }
@@ -114,7 +118,7 @@ export interface CourtWorkerLike {
 }
 
 interface Pending {
-  resolve: (bitmap: ImageBitmap) => void;
+  resolve: (painted: ImageBitmap | ImageData) => void;
   reject: (error: Error) => void;
 }
 
@@ -148,7 +152,7 @@ export class CourtWorkerPool {
   get inFlight(): number { return this.pending.size; }
 
   /** Runs one job. Rejects if the worker fails, which also retires the pool. */
-  run(job: Omit<CourtJob, 'id'>): Promise<ImageBitmap> {
+  run(job: Omit<CourtJob, 'id'>): Promise<ImageBitmap | ImageData> {
     if (this.broken) return Promise.reject(new Error('court worker: unavailable'));
     let worker: CourtWorkerLike;
     try {
@@ -159,7 +163,7 @@ export class CourtWorkerPool {
     }
     this.cancelIdle();
     const id = this.nextId++;
-    return new Promise<ImageBitmap>((resolve, reject) => {
+    return new Promise<ImageBitmap | ImageData>((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
       try {
         worker.postMessage({ ...job, id }, [job.bitmap]);
@@ -190,7 +194,7 @@ export class CourtWorkerPool {
       if (!waiting) return;
       this.pending.delete(reply.id);
       if ('error' in reply) waiting.reject(new Error(reply.error));
-      else waiting.resolve(reply.bitmap);
+      else waiting.resolve('pixels' in reply ? reply.pixels : reply.bitmap);
       if (!this.pending.size) this.armIdle();
     };
     worker.onerror = (event) => this.fail(event);

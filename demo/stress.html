@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>felt — stress</title>
+    <style>
+      @font-face {
+        font-family: 'Cinzel';
+        src: url('./fonts/cinzel-latin.woff2') format('woff2');
+        font-weight: 400 900;
+        font-display: block;
+      }
+      @font-face {
+        font-family: 'Jost';
+        src: url('./fonts/jost-latin.woff2') format('woff2');
+        font-weight: 300 700;
+        font-display: block;
+      }
+      @font-face {
+        font-family: 'Archivo';
+        src: url('./fonts/archivo-latin.woff2') format('woff2');
+        font-weight: 500 700;
+        font-display: block;
+      }
+      html, body {
+        margin: 0;
+        height: 100%;
+        background: #0b2119;
+        color: #cfead0;
+        font-family: 'Jost', system-ui, sans-serif;
+      }
+      body { display: flex; flex-direction: column; align-items: center; gap: 0.6rem; padding: 0.8rem; box-sizing: border-box; }
+      h1 { font-family: 'Cinzel', Georgia, serif; font-size: 1.1rem; letter-spacing: 0.06em; margin: 0; color: #fdfdfd; text-transform: uppercase; }
+      p { margin: 0; font-size: 0.8rem; text-align: center; max-width: 30rem; color: #9fc4a4; }
+      /* The canvas handles its own gestures; without this a drag is also a
+         page scroll on a touchscreen. */
+      #board { width: min(480px, 100%); flex: 1; touch-action: none; }
+      .row { display: flex; gap: 0.5rem; align-items: center; }
+      a { color: #ffd166; font-size: 0.8rem; }
+      button {
+        font-family: 'Cinzel', Georgia, serif; font-size: 0.75rem; letter-spacing: 0.05em;
+        text-transform: uppercase; color: #fdfdfd; background: #17594a;
+        border: 1px solid #cfead0; border-radius: 4px; padding: 0.4rem 0.8rem; cursor: pointer;
+      }
+      .home {
+        position: fixed; top: 0.55rem; left: 0.6rem; z-index: 20;
+        font-family: 'Cinzel', Georgia, serif; font-size: 0.66rem;
+        letter-spacing: 0.05em; text-transform: uppercase; text-decoration: none;
+        color: #fdfdfd; background: #17594a; border: 1px solid #cfead0;
+        border-radius: 4px; padding: 0.28rem 0.5rem; line-height: 1;
+      }
+      .home:hover, .home:focus-visible { border-color: #ffd166; color: #ffd166; }
+      label { font-size: 0.72rem; display: flex; align-items: center; gap: 0.35rem; color: #9fc4a4; }
+      input[type=range] { width: 7rem; accent-color: #ffd166; }
+      label code { font-size: 0.68rem; color: #cfead0; font-family: ui-monospace, monospace; min-width: 2.2rem; }
+      #board { width: min(560px, 100%); flex: 1; }
+      #stats { font-family: ui-monospace, monospace; font-size: 0.7rem; color: #7fae86; white-space: pre; text-align: center; }
+    </style>
+  </head>
+  <body>
+    <a class="home" href="./">&larr; Demos</a>
+    <h1>Stress</h1>
+    <p>
+      Cards, all of them moving every frame. Count how many the engine keeps
+      at sixty frames a second - flat on the table, or tipping and rolling in
+      three dimensions.
+    </p>
+    <div id="board"></div>
+    <p id="stats">starting…</p>
+    <div class="row">
+      <button id="fewer">Fewer</button>
+      <button id="more">More</button>
+      <button id="mode">Mode: flat</button>
+      <button id="pause">Pause</button>
+    </div>
+    <script type="module" src="./stress.ts"></script>
+  </body>
+</html>

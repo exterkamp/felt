@@ -174,8 +174,10 @@ void main() {
     card *= body;
   }
 
+  // Under an opaque card nothing of the shadow shows, and that is most of
+  // a card's pixels: three rounded boxes a pixel, skipped.
   float shadow = 0.0;
-  if (v_layers.w > 0.0) {
+  if (v_layers.w > 0.0 && card.a < 0.999) {
     float k = size.x / 60.0;
     // A card lifted off the table throws its shadow further and softer.
     float lift = v_lift;

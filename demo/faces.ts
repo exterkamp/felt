@@ -42,12 +42,10 @@ export const scene = defineScene({
       face === 'jumbo' ? 'Jumbo index' : face[0].toUpperCase() + face.slice(1);
 
     /**
-     * Both cuts, because this page draws all three faces at once and the cut is
-     * part of a court's key: the mobile column wants one figure and the other two
-     * want the double-ended card.
+     * The courts are the sheets' to ask for: each face asks for its own cut,
+     * at the raster its size needs.
      */
     function paint(): void {
-      void renderCourts(board, courtStart(theme), { cut: ['half', 'full'] });
       lay();
     }
 

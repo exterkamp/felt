@@ -251,7 +251,11 @@ export class ArtStore {
       half.width = Math.round(level.width / 2);
       half.height = Math.round(level.height / 2);
       const pen = half.getContext('2d', CPU)!;
-      pen.imageSmoothingQuality = 'high';
+      // An exact halving with the plain bilinear filter averages each 2x2
+      // block: a box filter, which is what a mip level is. 'high' runs a
+      // wide resampler instead, and measured 39 ms a court's chain against
+      // 3.8 - most of what a warm start spent.
+      pen.imageSmoothingQuality = 'low';
       pen.drawImage(level, 0, 0, half.width, half.height);
       chain.push(half);
       level = half;

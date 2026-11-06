@@ -63,6 +63,12 @@ export abstract class Node implements InstanceItem, Layered {
    * card casts nothing, and a squared deck has one card's shadow.
    */
   covered = false;
+  /**
+   * Covered, and by something solid: not drawn at all. Set each frame by the
+   * board. A pile of fifty-two drawn as one card, not fifty-two stacked
+   * exactly on top of each other - fifty-one of which no pixel shows.
+   */
+  occluded = false;
   /** Anything a game wants to hang off it. */
   data: Record<string, unknown> = {};
 
@@ -210,6 +216,14 @@ export abstract class Node implements InstanceItem, Layered {
   prepare(): void { /* nothing, for most */ }
 
   /** Whether another node sits exactly where this one does, covering it. */
+  /**
+   * Whether it hides everything with its footprint underneath it: an opaque
+   * shape drawn this frame. A card is; a sprite (which may have holes) is not.
+   */
+  opaqueBody(): boolean {
+    return false;
+  }
+
   sameFootprint(other: Node): boolean {
     if (this.offsets.length || other.offsets.length) return false;
     return other._x === this._x && other._y === this._y && other._z === this._z
@@ -234,12 +248,22 @@ export abstract class Node implements InstanceItem, Layered {
     return p;
   }
 
+  /**
+   * The pose as drawn, into an object the node keeps: written every frame
+   * for every node, so a fresh one each time was thousands of allocations a
+   * frame on a busy table. Valid until the next call.
+   */
   private writePoseValues(): Node['shown'] {
-    return this.offsets.length ? this.shown : {
-      x: this._x, y: this._y, z: this._z, angle: this._angle, tilt: this._tilt,
-      turn: this._turn, bow: this._bow, scaleX: this._scaleX, scaleY: this._scaleY,
-    };
+    if (this.offsets.length) return this.shown;
+    const p = this.drawnPose;
+    p.x = this._x; p.y = this._y; p.z = this._z; p.angle = this._angle; p.tilt = this._tilt;
+    p.turn = this._turn; p.bow = this._bow; p.scaleX = this._scaleX; p.scaleY = this._scaleY;
+    return p;
   }
+
+  private readonly drawnPose: Node['shown'] = {
+    x: 0, y: 0, z: 0, angle: 0, tilt: 0, turn: 0, bow: 0, scaleX: 1, scaleY: 1,
+  };
 }
 
 /** Packs a 0xrrggbb color into one float the shader unpacks exactly. */
