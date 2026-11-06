@@ -3,6 +3,7 @@ import { ManualClock } from '../runtime/clock.js';
 import { createEngine } from '../runtime/engine.js';
 import { Offset } from './animator.js';
 import { PickUp } from './pick-up.js';
+import { cardRotation } from '../gl/lens.js';
 
 function card() {
   const offsets: Offset[] = [];
@@ -130,5 +131,71 @@ describe('how it settles', () => {
     }
     expect(crossings).toBeLessThanOrEqual(1);
     expect(overshoot).toBeLessThan(0.1);
+  });
+});
+
+describe('a run carried with a held card', () => {
+  /** A point on the lead card, posed as the shader poses it: centre + Rz·Rx·Ry·local. */
+  const posed = (lead: ReturnType<typeof card>, lx: number, ly: number) => {
+    const o = lead.shown as Offset;
+    const r = cardRotation(((lead.angle + o.angle) * Math.PI) / 180, o.tilt, o.turn);
+    return { x: lead.x + r[0] * lx + r[1] * ly, y: lead.y + r[3] * lx + r[4] * ly, z: o.z + r[6] * lx + r[7] * ly };
+  };
+
+  it('swings with it as one rigid stack, not card by card', () => {
+    const { clock, pick } = setup();
+    const lead = card();
+    const below = [card(), card()];
+    below.forEach((c, i) => { c.y = lead.y + 24 * (i + 1); });
+    pick.lift(lead);
+    pick.carry(lead, below);
+    clock.advance(300);
+    let worst = 0;
+    let swung = 0;
+    for (let i = 0; i < 30; i++) {
+      // Dragged up and right together, the way the table moves a run.
+      for (const c of [lead, ...below]) { c.x += 9; c.y -= 4; }
+      clock.advance(1000 / 60);
+      swung = Math.max(swung, Math.abs((lead.shown as Offset).turn), Math.abs((lead.shown as Offset).tilt));
+      below.forEach((c, k) => {
+        const o = c.shown as Offset;
+        const want = posed(lead, 0, 24 * (k + 1));
+        if (want.z < 0) return;   // never below the felt; nothing to compare there
+        worst = Math.max(worst, Math.hypot(c.x + o.x - want.x, c.y + o.y - want.y, o.z - want.z));
+        expect(o.angle).toBe((lead.shown as Offset).angle);
+        expect(o.tilt).toBe((lead.shown as Offset).tilt);
+        expect(o.turn).toBe((lead.shown as Offset).turn);
+      });
+    }
+    expect(swung).toBeGreaterThan(0.05);
+    expect(worst).toBeLessThan(1e-6);
+  });
+
+  it('swings less than a card on its own, being heavier', () => {
+    const swing = (carrying: number) => {
+      const { clock, pick } = setup();
+      const lead = card();
+      const rest = Array.from({ length: carrying }, () => card());
+      pick.lift(lead);
+      pick.carry(lead, rest);
+      clock.advance(300);
+      let most = 0;
+      for (let i = 0; i < 20; i++) { lead.x += 12; clock.advance(1000 / 60); most = Math.max(most, Math.abs((lead.shown as Offset).turn)); }
+      return most;
+    };
+    expect(swing(3)).toBeLessThan(swing(0) * 0.6);
+  });
+
+  it('comes off the carried cards once the held one is down', () => {
+    const { clock, pick } = setup();
+    const lead = card();
+    const other = card();
+    pick.lift(lead);
+    pick.carry(lead, [other]);
+    clock.advance(300);
+    pick.drop(lead);
+    clock.advance(2000);
+    expect(pick.holding(lead)).toBe(false);
+    expect(other.offsets.length).toBe(0);
   });
 });

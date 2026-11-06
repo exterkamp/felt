@@ -96,6 +96,11 @@ export interface MoveOptions extends ThrowOptions {
   instant?: boolean;
   /** Recorded on the `move` event. Default 'api'. */
   by?: MoveCause;
+  /**
+   * All the cards at once, as one piece - a run dropped on a column -
+   * rather than one after another. Default false.
+   */
+  together?: boolean;
 }
 
 export type MoveCause = 'api' | 'deal' | 'drag' | 'flick' | 'sync';
@@ -265,9 +270,11 @@ export abstract class Zone {
   /** Every card to its place. Cards in flight or in a hand are left alone. */
   layout(duration = this.table.relay): void {
     const except = this.list.filter((c) => this.table.isMoving(c));
+    // Cards in flight or in the hand keep the depth they fly at, each its own.
+    const kept = except.map((c) => this.table.depthFor(c));
     layPlaces(this.table.board, this.list, this.places(this.list.length), stackDepths(this, this.list.length),
       { base: this.base, duration, except });
-    for (const c of except) c.depth = this.table.depthFor(c);
+    except.forEach((c, i) => { c.depth = kept[i]; });
   }
 }
 
@@ -422,7 +429,7 @@ export class Table {
 
   /** @internal The depth a moving card keeps while it moves. */
   depthFor(card: CardSprite): number {
-    return this.held.has(card) ? card.depth : card.depth >= FLYING_DEPTH ? card.depth : FLYING_DEPTH + this.flights;
+    return this.held.has(card) || card.depth >= FLYING_DEPTH ? card.depth : FLYING_DEPTH + ++this.flights;
   }
 
   // --- moves ---------------------------------------------------------------
@@ -555,7 +562,7 @@ export class Table {
         card.angle = place.angle;
       } else {
         await throwCard(this.board, card, { x: place.x, y: place.y, angle: place.angle },
-          { ...throws, delay: (throws.delay ?? 0) + i * 30 });
+          { ...throws, delay: (throws.delay ?? 0) + (options.together ? 0 : i * 30) });
       }
       // Taken over by a later move: that one finishes the job.
       if (this.moving.get(card) !== token) return;
@@ -631,7 +638,7 @@ export class Table {
       }, { key: `table-outline-${width}x${height}`, depth: FLYING_DEPTH - 1 });
       outline.visible = false;
     }
-    type Drag = { cards: CardSprite[]; from: Zone | undefined; grip: Point; offsets: Point[]; target?: Zone };
+    type Drag = { cards: CardSprite[]; from: Zone | undefined; grip: Point; offsets: Point[]; target?: Zone; carried?: boolean };
     let drag: Drag | undefined;
 
     const targetFor = (d: Drag): Zone | undefined => {
@@ -659,7 +666,7 @@ export class Table {
         pointer.refuse?.();
         return;
       }
-      animatorOf(board).stop(card, 'move');
+      for (const c of cards) animatorOf(board).stop(c, 'move');
       if (!from) this.moving.delete(card);   // caught mid-flick
       drag = {
         cards, from, grip: { x: pointer.x - card.x, y: pointer.y - card.y },
@@ -674,6 +681,12 @@ export class Table {
       const x = pointer.x - drag.grip.x;
       const y = pointer.y - drag.grip.y;
       drag.cards.forEach((c, i) => c.setPosition(x + drag!.offsets[i].x, y + drag!.offsets[i].y));
+      // A run swings as one stack: the rest ride on the card picked up -
+      // once the board has picked it up (it does, after dragstart, in 3D).
+      if (!drag.carried && drag.cards.length > 1 && board.pickUp?.holding(drag.cards[0])) {
+        board.pickUp.carry(drag.cards[0], drag.cards.slice(1));
+        drag.carried = true;
+      }
       drag.target = targetFor(drag);
       if (outline) {
         outline.visible = drag.target !== undefined;
@@ -696,7 +709,7 @@ export class Table {
       this.emit('drop', { cards: d.cards, from: d.from, to, velocity });
       const back = () => {
         if (d.from) void this.move(d.cards, d.from, { index: d.from.list.indexOf(d.cards[0]), duration: settle,
-          spins: 0, arc: 6, pop: false, by: 'drag' });
+          spins: 0, arc: 6, pop: false, by: 'drag', together: true });
       };
       if (flick && d.cards.length === 1 && !to) {
         this.flickOut(d.cards[0], d.from, velocity, d.grip, flick, back);
@@ -712,7 +725,7 @@ export class Table {
       const say = options.decide?.({ cards: d.cards, from: d.from, to });
       if (say === false) { this.emit('refuse', { cards: d.cards, from: d.from, to }); back(); return; }
       if (say === 'hold') return;
-      void this.move(d.cards, to, { duration: settle, spins: 0, arc: 6, pop: false, by: 'drag' });
+      void this.move(d.cards, to, { duration: settle, spins: 0, arc: 6, pop: false, by: 'drag', together: true });
     };
 
     board.on('dragstart', start);

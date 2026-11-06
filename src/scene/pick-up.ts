@@ -1,5 +1,6 @@
 import type { Dispose } from '../runtime/disposables.js';
 import type { Engine } from '../runtime/engine.js';
+import { cardRotation } from '../gl/lens.js';
 import { Offset, zeroOffset } from './animator.js';
 
 // A card picked up off the table.
@@ -88,8 +89,15 @@ interface Held {
   lens: Spring;
 }
 
+/** Cards carried with a held one, as one rigid stack. */
+interface Carried {
+  followers: Liftable[];
+  offsets: Offset[];
+}
+
 export class PickUp {
   private readonly held = new Map<Liftable, Held>();
+  private readonly carried = new Map<Liftable, Carried>();
   private stop?: Dispose;
   readonly options: Required<PickUpOptions>;
 
@@ -140,9 +148,65 @@ export class PickUp {
     if (held) held.down = true;
   }
 
+  /**
+   * Cards that go with a held one as one piece - a run picked up off a
+   * solitaire column. They wear the held card's lift and swing as if fixed
+   * to it: the same tip, roll and sway, about the held card's centre, so the
+   * stack swings as a stack instead of every card swinging on its own. They
+   * keep their own places in the plane; the game moves them with the held
+   * card as before. Carried until the held card is back on the table.
+   */
+  carry(lead: Liftable, followers: readonly Liftable[]): void {
+    this.uncarry(lead);
+    if (!followers.length) return;
+    const offsets = followers.map(() => zeroOffset());
+    followers.forEach((f, i) => f.addOffset(offsets[i]));
+    this.carried.set(lead, { followers: [...followers], offsets });
+  }
+
+  private uncarry(lead: Liftable): void {
+    const carried = this.carried.get(lead);
+    if (!carried) return;
+    carried.followers.forEach((f, i) => { f.removeOffset(carried.offsets[i]); f.offsetChanged(); });
+    this.carried.delete(lead);
+  }
+
+  /** Puts the held card's pose on the cards it carries, as one rigid body. */
+  private follow(held: Held): void {
+    const carried = this.carried.get(held.node);
+    if (!carried) return;
+    const lead = held.node;
+    const o = held.offset;
+    const base = (lead.angle * Math.PI) / 180;
+    const r = cardRotation(base + (o.angle * Math.PI) / 180, o.tilt, o.turn);
+    const c = Math.cos(-base);
+    const s = Math.sin(-base);
+    carried.followers.forEach((f, i) => {
+      // Where it sits on the held card, in that card's own frame...
+      const dx = f.x - lead.x;
+      const dy = f.y - lead.y;
+      const lx = dx * c - dy * s;
+      const ly = dx * s + dy * c;
+      // ...and where that point is with the held card lifted and swung.
+      const wx = r[0] * lx + r[1] * ly;
+      const wy = r[3] * lx + r[4] * ly;
+      const wz = r[6] * lx + r[7] * ly;
+      const off = carried.offsets[i];
+      off.x = o.x + wx - dx;
+      off.y = o.y + wy - dy;
+      off.z = Math.max(0, o.z + wz);   // the shader adds a rotated point's z to the height
+      off.angle = o.angle;
+      off.tilt = o.tilt;
+      off.turn = o.turn;
+      off.lens = o.lens;
+      f.offsetChanged();
+    });
+  }
+
   /** Lets go of everything at once, with no settling: a scene ending. */
   clear(): void {
     for (const held of this.held.values()) this.release(held);
+    for (const lead of [...this.carried.keys()]) this.uncarry(lead);
     this.held.clear();
     this.stop?.();
     this.stop = undefined;
@@ -183,9 +247,13 @@ export class PickUp {
       // (a positive turn lifts the right edge, so this one is negative);
       // pulled up the table, its top edge dips away. And it lags round a
       // little in the plane, as if held above its middle.
-      const turnTo = held.down ? 0 : clamp(-lx * o.swivel, o.maxSwivel);
-      const tiltTo = held.down ? 0 : clamp(-ly * o.swivel, o.maxSwivel);
-      const swayTo = held.down ? 0 : clamp(lx * o.sway, o.maxSway);
+      // A stack carried with it is longer and heavier: it swings less, so
+      // its far end does not swing down through the felt.
+      const carrying = this.carried.get(node)?.followers.length ?? 0;
+      const heavy = 1 / (1 + carrying * 0.45);
+      const turnTo = held.down ? 0 : clamp(-lx * o.swivel, o.maxSwivel) * heavy;
+      const tiltTo = held.down ? 0 : clamp(-ly * o.swivel, o.maxSwivel) * heavy;
+      const swayTo = held.down ? 0 : clamp(lx * o.sway, o.maxSway) * heavy;
       const zTo = held.down ? 0 : o.lift;
       held.z.step(zTo, dt, o.stiffness * 0.6, 0.9);
       held.turn.step(turnTo, dt, o.stiffness, o.damping);
@@ -199,6 +267,7 @@ export class PickUp {
       held.offset.angle = held.angle.value;
       held.offset.lens = Math.max(0, held.lens.value);
       node.offsetChanged();
+      this.follow(held);
       if (held.down && held.z.value <= 0.05 && held.z.speed <= 0.5
         && held.turn.settled(0) && held.tilt.settled(0) && held.angle.settled(0) && held.lens.value < 0.01) {
         this.release(held);
@@ -214,5 +283,6 @@ export class PickUp {
   private release(held: Held): void {
     held.node.removeOffset(held.offset);
     held.node.offsetChanged();
+    this.uncarry(held.node);
   }
 }
