@@ -53,19 +53,25 @@ interface Fanned extends Ordered { x: number; y: number; angle: number }
 export function layHand(
   host: TweenHost, sprites: readonly Fanned[], hand: Hand, options: LayHandOptions = {},
 ): void {
-  const places = handPositions(hand, sprites.length);
-  const depths = stackDepths(hand, sprites.length);
+  layPlaces(host, sprites, handPositions(hand, sprites.length), stackDepths(hand, sprites.length), options);
+}
+
+/**
+ * Lays any cards out at given places and depths: each tweened to its place on
+ * its `move` channel, turned the short way, or put there at once with a
+ * duration of zero. What `layHand` does for a hand; a `Table` uses it for
+ * every pile.
+ */
+export function layPlaces(
+  host: TweenHost, sprites: readonly Fanned[], places: readonly { x: number; y: number; angle: number }[],
+  depths: readonly number[], options: LayHandOptions = {},
+): void {
   const duration = options.duration ?? 160;
   const animator = animatorOf(host);
   sprites.forEach((sprite, i) => {
     const place = places[i];
     sprite.depth = (options.base ?? 0) + depths[i];
     if (options.except?.includes(sprite)) return;
-    // A card a throw is carrying is the throw's: the re-fan yields to it
-    // (lower priority on the shared `move` channel) and the card lands where
-    // it was thrown, at the angle the hand will hold it. Anything else
-    // moving it - an earlier re-fan - is cut off where it is, and this one
-    // goes on from there.
     if (duration <= 0) {
       if (animator.busy(sprite, 'move')) {
         void animator.play(sprite, { channel: 'move', policy: 'interrupt', duration: 0,
@@ -77,12 +83,13 @@ export function layHand(
       sprite.angle = place.angle;
       return;
     }
+    // Already there: nothing to tween (and nothing to cut off).
+    if (sprite.x === place.x && sprite.y === place.y && sprite.angle === place.angle
+      && !animator.busy(sprite, 'move')) return;
     let from = { x: 0, y: 0, angle: 0, to: 0 };
     void animator.play(sprite, {
       channel: 'move',
       policy: 'interrupt',
-      // Re-fanned to the place it is already going to - a hand re-laid on
-      // every pointer move - carries on rather than easing out again.
       intent: `lay ${place.x} ${place.y} ${place.angle}`,
       duration,
       ease: options.ease ?? 'Cubic.easeOut',

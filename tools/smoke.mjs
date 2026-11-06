@@ -434,7 +434,7 @@ const hand = JSON.parse(await evaluate(`JSON.stringify({
   counts: Object.fromEntries([...__felt.piles].map(([k, v]) => [k, v.cards.length])),
   deck: __felt.deck().length,
   settled: [...__felt.piles.values()].every((p) => {
-    if (p.kind === 'stack') return p.cards.every(c => c.angle === 0);
+    if (p.kind === 'pile') return p.cards.every(c => c.angle === 0);
     const places = __felt.handPositions(p.hand, p.cards.length);
     return p.cards.every((c, i) => Math.abs(((c.angle - places[i].angle + 540) % 360) - 180) < 0.5);
   }),

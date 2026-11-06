@@ -65,7 +65,7 @@ export {
 export { Animator, animatorOf, zeroOffset } from './scene/animator.js';
 export type { Canned, Offset, Policy } from './scene/animator.js';
 export type { DealOptions, Movable, ThrowOptions, ThrowTarget, TweenHost } from './play/flight.js';
-export { layHand, orderStack } from './play/order.js';
+export { layHand, layPlaces, orderStack } from './play/order.js';
 export type { LayHandOptions } from './play/order.js';
 export { flipCard } from './play/flip.js';
 export type { FlipOptions } from './play/flip.js';
@@ -73,3 +73,8 @@ export { RIFFLE_DEPTH, RIFFLE_HAND_DEPTH, riffleShuffle } from './play/riffle.js
 export type { RiffleOptions } from './play/riffle.js';
 export { TuckBox, supportsTuckBox } from './play/tuck-box.js';
 export type { TuckBoxOptions } from './play/tuck-box.js';
+export { HandZone, Pile, Table, Zone, createTable } from './table/table.js';
+export type {
+  Accepts, CanTake, DragOptions, TableDealOptions, HandOptions, MoveCause, MoveOptions, PileOptions, SyncOptions,
+  TableMove, TableOptions, TableTap, ZoneRules,
+} from './table/table.js';

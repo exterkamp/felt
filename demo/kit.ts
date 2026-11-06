@@ -1,4 +1,6 @@
-import { Board, CARD_HEIGHT, CARD_WIDTH, DISPLAY_FONT, Director, Scene, Sprite, animatorOf, fpsMeter } from 'felt';
+import {
+  Board, CARD_HEIGHT, CARD_WIDTH, DISPLAY_FONT, Director, Scene, SceneContext, Sprite, animatorOf, fpsMeter,
+} from 'felt';
 
 // The two things every demo page prints on its felt: the outline of an empty
 // pile, and a small label. One picture each, shared by every sprite using it.
@@ -39,4 +41,14 @@ export function standalone(scene: Scene<never>): void {
   if ((window as unknown as { __feltApp?: unknown }).__feltApp) return;
   const director = new Director(document.body, [scene]);
   void director.go(scene.name);
+}
+
+/**
+ * A button by id, wired for as long as the scene runs. `run` gets the
+ * element, for a button that labels its own state ("Spins: 2").
+ */
+export function button(ctx: SceneContext, id: string, run: (el: HTMLElement) => void): HTMLElement {
+  const el = ctx.$(`#${id}`);
+  ctx.listen(el, 'click', () => run(el));
+  return el;
 }

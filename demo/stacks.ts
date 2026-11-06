@@ -1,9 +1,7 @@
 import './serve';
 import {
-  CARD_HEIGHT, CARD_WIDTH, CardSprite, COURT_PALETTES, DEFAULT_DECK_THEME, DISPLAY_FONT,
-  FanDirection, MESSY_TURN, Sprite, Stack, StackOrder, buildDeck, cardFaceMetrics, cardRect,
-  defineStack, loadCardArt, nextPosition, orderStack, renderCourts, seeded, shuffle,
-  stackPositions, stackUnder, topCardIndex, Card,
+  CARD_HEIGHT, CARD_WIDTH, DEFAULT_DECK_THEME, DISPLAY_FONT, FanDirection, MESSY_TURN, Sprite, StackOrder,
+  buildDeck, cardFaceMetrics, createTable, seeded, shuffle,
 } from 'felt';
 import { showCode } from './code';
 import { expose, standalone } from './kit';
@@ -35,91 +33,49 @@ export const scene = defineScene({
     const UP_FOOT = 700;
     const DOWN_CAP = 110;
     const SIDE_CAP = 80;
-    /** Above every pile's band, so a card in hand is over everything. */
-    const HELD_DEPTH = 10000;
-
-    interface Pile { stack: Stack; cards: CardSprite[] }
-
     const theme = DEFAULT_DECK_THEME;
     const board = ctx.board({ parent: 'board', width: WIDTH, height: HEIGHT, backgroundColor: '#13463a' });
-    let piles: Pile[] = [];
     let squeezed = true;
     let messy = 0;
-    let dragging: { view: CardSprite; from: Pile } | undefined;
     const marks: Sprite[] = [];
 
-    // The courts are rendered, not loaded. Not awaited: a card made before its
-    // portrait lands shows its pip and is repainted when it arrives.
-    void renderCourts(board, COURT_PALETTES[theme]);
-    void loadCardArt(board, { themes: [theme] });
-
-    // The drop highlight: one outline, moved to wherever a card would land.
-    const highlight = board.graphic(CARD_WIDTH + 4, CARD_HEIGHT + 4, (pen, w, h) => {
-      pen.strokeStyle = 'rgba(255, 209, 102, 0.9)';
-      pen.lineWidth = 2;
-      pen.beginPath();
-      pen.roundRect(1, 1, w - 2, h - 2, 5);
-      pen.stroke();
-    }, { depth: 5, key: 'stacks-highlight' });
-    highlight.visible = false;
-
-    function report(): void {
-      const note = document.getElementById('note');
-      if (!note) return;
-      const column = pile('down-last-on-top');
-      const gap = column && column.cards.length > 1
-        ? Math.round((column.cards[1].y - column.cards[0].y) * 10) / 10 : 0;
-      const peek = cardFaceMetrics(CARD_WIDTH).peek;
-      const pair = 'Each pair is the same stack twice, drawn newest-in-front and oldest-in-front. ';
-      const squeeze = squeezed
-        ? `maxSpread ${DOWN_CAP}: the six-card column fans at ${gap} units a card instead of 26 `
-          + `— under the ${peek.toFixed(1)} an index needs, so the ranks are clipped.`
-        : `maxSpread 0: every pile fans at its full step, clear of the ${peek.toFixed(1)} `
-          + 'units an index needs.';
-      const mess = messy > 0
-        ? ` messy ${messy.toFixed(2)}: every card turned up to `
-          + `${(messy * MESSY_TURN).toFixed(1)}° where it lands, the same way every time `
-          + 'the pile is drawn.'
-        : ' messy 0: every pile square.';
-      const dial = document.getElementById('messy-value');
-      if (dial) dial.textContent = messy.toFixed(2);
-      note.textContent = pair + squeeze + mess;
-    }
-
-    function buildStacks(): void {
-      const kept = new Map(piles.map((p) => [p.stack.id, p.cards]));
-      // #region Every way a stack can run
-      const pair = (fan: FanDirection, step: number, cap: number,
-        places: Record<StackOrder, { x: number; y: number }>): Stack[] =>
-        (['last-on-top', 'first-on-top'] as StackOrder[]).map((order) => defineStack({
-          id: `${fan}-${order}`, ...places[order], fan, step,
-          maxSpread: squeezed ? cap : 0, messy, order,
-        }));
-      // #endregion
-      const stacks: Stack[] = [
-        ...pair('none', 0, 0, {
-          'last-on-top': { x: centre(0), y: TOP_ROW }, 'first-on-top': { x: centre(1), y: TOP_ROW },
-        }),
-        defineStack({ id: 'deck', x: centre(5), y: TOP_ROW, messy }),
-        ...pair('right', 22, SIDE_CAP, {
-          'last-on-top': { x: MARGIN + CARD_WIDTH / 2, y: RIGHT_ROW },
-          'first-on-top': { x: WIDTH / 2 + CARD_WIDTH / 2, y: RIGHT_ROW },
-        }),
-        ...pair('left', 22, SIDE_CAP, {
-          'last-on-top': { x: WIDTH / 2 - CARD_WIDTH / 2, y: LEFT_ROW },
-          'first-on-top': { x: WIDTH - MARGIN - CARD_WIDTH / 2, y: LEFT_ROW },
-        }),
-        ...pair('down', 26, DOWN_CAP, {
-          'last-on-top': { x: centre(0), y: COLUMN_TOP + CARD_HEIGHT / 2 },
-          'first-on-top': { x: centre(1), y: COLUMN_TOP + CARD_HEIGHT / 2 },
-        }),
-        ...pair('up', 26, DOWN_CAP, {
-          'last-on-top': { x: centre(4), y: UP_FOOT }, 'first-on-top': { x: centre(5), y: UP_FOOT },
-        }),
-      ];
-      piles = stacks.map((stack) => ({ stack, cards: kept.get(stack.id) ?? [] }));
-      printFelt();
-    }
+    // #region A table of stacks: one of every direction a pile can run, each twice
+    const table = createTable(board, { style: { theme } });
+    const pair = (fan: FanDirection, step: number, cap: number,
+      places: Record<StackOrder, { x: number; y: number }>) =>
+      (['last-on-top', 'first-on-top'] as StackOrder[]).map((order) => table.pile({
+        id: `${fan}-${order}`, ...places[order], fan, step, maxSpread: squeezed ? cap : 0, messy, order,
+      }));
+    const piles = [
+      ...pair('none', 0, 0, {
+        'last-on-top': { x: centre(0), y: TOP_ROW }, 'first-on-top': { x: centre(1), y: TOP_ROW },
+      }),
+      table.pile({ id: 'deck', x: centre(5), y: TOP_ROW, messy }),
+      ...pair('right', 22, SIDE_CAP, {
+        'last-on-top': { x: MARGIN + CARD_WIDTH / 2, y: RIGHT_ROW },
+        'first-on-top': { x: WIDTH / 2 + CARD_WIDTH / 2, y: RIGHT_ROW },
+      }),
+      ...pair('left', 22, SIDE_CAP, {
+        'last-on-top': { x: WIDTH / 2 - CARD_WIDTH / 2, y: LEFT_ROW },
+        'first-on-top': { x: WIDTH - MARGIN - CARD_WIDTH / 2, y: LEFT_ROW },
+      }),
+      ...pair('down', 26, DOWN_CAP, {
+        'last-on-top': { x: centre(0), y: COLUMN_TOP + CARD_HEIGHT / 2 },
+        'first-on-top': { x: centre(1), y: COLUMN_TOP + CARD_HEIGHT / 2 },
+      }),
+      ...pair('up', 26, DOWN_CAP, {
+        'last-on-top': { x: centre(4), y: UP_FOOT }, 'first-on-top': { x: centre(5), y: UP_FOOT },
+      }),
+    ];
+    const pile = (id: string) => piles.find((p) => p.id === id);
+    // Squeezing and messing reshape the stacks; the cards follow at once.
+    const reshape = () => {
+      for (const p of piles) {
+        const cap = p.stack.fan === 'none' ? 0 : p.stack.fan === 'down' || p.stack.fan === 'up' ? DOWN_CAP : SIDE_CAP;
+        p.reshape({ maxSpread: squeezed ? cap : 0, messy }, 0);
+      }
+    };
+    // #endregion
 
     /** The outline of every stack, and which way it runs. */
     function printFelt(): void {
@@ -151,127 +107,66 @@ export const scene = defineScene({
       say(WIDTH / 2 - 20, UP_FOOT - 60, 'UP', '#7fae86', 11);
     }
 
+    function report(): void {
+      const note = document.getElementById('note');
+      if (!note) return;
+      const column = pile('down-last-on-top');
+      const gap = column && column.cards.length > 1
+        ? Math.round((column.cards[1].y - column.cards[0].y) * 10) / 10 : 0;
+      const peek = cardFaceMetrics(CARD_WIDTH).peek;
+      const pair = 'Each pair is the same stack twice, drawn newest-in-front and oldest-in-front. ';
+      const squeeze = squeezed
+        ? `maxSpread ${DOWN_CAP}: the six-card column fans at ${gap} units a card instead of 26 `
+          + `— under the ${peek.toFixed(1)} an index needs, so the ranks are clipped.`
+        : `maxSpread 0: every pile fans at its full step, clear of the ${peek.toFixed(1)} `
+          + 'units an index needs.';
+      const mess = messy > 0
+        ? ` messy ${messy.toFixed(2)}: every card turned up to `
+          + `${(messy * MESSY_TURN).toFixed(1)}° where it lands, the same way every time `
+          + 'the pile is drawn.'
+        : ' messy 0: every pile square.';
+      const dial = document.getElementById('messy-value');
+      if (dial) dial.textContent = messy.toFixed(2);
+      note.textContent = pair + squeeze + mess;
+    }
+
+    // #region Dealing, and dragging from any pile to any other
     function deal(): void {
-      for (const p of piles) {
-        for (const view of p.cards) view.destroy();
-        p.cards = [];
-      }
-      const deck = shuffle(buildDeck(), seeded(Date.now() % 100000));
-      let next = 0;
-      const give = (id: string, count: number) => {
-        const target = pile(id)!;
-        for (let n = 0; n < count && next < deck.length; n++) target.cards.push(makeCard(deck[next++]));
-      };
+      table.clear();
+      const deck = shuffle(buildDeck(), seeded(Date.now() % 100000)).map((card) => ({ ...card, faceUp: true }));
       for (const order of ['last-on-top', 'first-on-top']) {
-        give(`none-${order}`, 3);
-        give(`right-${order}`, 5);
-        give(`left-${order}`, 5);
-        give(`down-${order}`, 6);
-        give(`up-${order}`, 6);
+        pile(`none-${order}`)!.put(deck.splice(0, 3));
+        pile(`right-${order}`)!.put(deck.splice(0, 5));
+        pile(`left-${order}`)!.put(deck.splice(0, 5));
+        pile(`down-${order}`)!.put(deck.splice(0, 6));
+        pile(`up-${order}`)!.put(deck.splice(0, 6));
       }
-      give('deck', deck.length - next);
-      layOutAll();
+      pile('deck')!.put(deck);
     }
-
-    function makeCard(card: Card): CardSprite {
-      const view = new CardSprite(board, { ...card, faceUp: true }, { theme });
-      view.depth = 1;
-      view.draggable = true;
-      return view;
-    }
-
-    function pile(id: string): Pile | undefined {
-      return piles.find((p) => p.stack.id === id);
-    }
-
-    // #region Laying a pile out
-    function layOut(p: Pile): void {
-      const at = stackPositions(p.stack, p.cards.length);
-      p.cards.forEach((view, i) => {
-        view.setPosition(at[i].x, at[i].y);
-        view.angle = at[i].angle;
-      });
-      // Each pile a band of its own, so overlapping piles keep their order. The
-      // board sorts by depth itself: nothing else to call.
-      orderStack(p.cards, p.stack, piles.indexOf(p) * 100);
-    }
+    // Only the card drawn in front comes away (each pile's default), the
+    // outline shows where it will land, and a drop anywhere else sends it back.
+    table.draggable();
     // #endregion
-
-    function layOutAll(): void {
-      for (const p of piles) layOut(p);
-    }
-
-    // #region Which stack a dragged card is over
-    function targetFor(view: CardSprite): Stack | undefined {
-      return stackUnder(cardRect({ x: view.x, y: view.y }),
-        piles.filter((p) => !p.cards.includes(view)).map((p) => ({ stack: p.stack, count: p.cards.length })));
-    }
-    // #endregion
-
-    // #region Dragging from pile to pile
-    board.on('dragstart', (pointer, node) => {
-      const view = node as CardSprite;
-      const from = piles.find((p) => p.cards.includes(view));
-      // Only the card drawn in front comes away - which on a first-on-top
-      // stack is the oldest. Any other is refused, so it is not picked up.
-      const front = from ? topCardIndex(from.stack, from.cards.length) : undefined;
-      if (!from || front === undefined || from.cards[front] !== view) {
-        pointer.refuse?.();
-        return;
-      }
-      dragging = { view, from };
-      view.depth = HELD_DEPTH;
-    });
-    // #endregion
-
-    board.on('drag', (pointer) => {
-      if (!dragging) return;
-      dragging.view.setPosition(pointer.x, pointer.y);
-      dragging.view.angle = 0;
-      const target = targetFor(dragging.view);
-      highlight.visible = Boolean(target);
-      if (target) {
-        const at = nextPosition(target, pile(target.id)?.cards.length ?? 0);
-        highlight.setPosition(at.x, at.y);
-      }
-    });
-
-    board.on('dragend', () => {
-      const drag = dragging;
-      dragging = undefined;
-      highlight.visible = false;
-      if (!drag) return;
-      const target = targetFor(drag.view);
-      const to = target ? pile(target.id) : undefined;
-      if (to && to !== drag.from) {
-        drag.from.cards = drag.from.cards.filter((c) => c !== drag.view);
-        to.cards.push(drag.view);
-        layOut(drag.from);
-      }
-      layOut(to ?? drag.from);
-    });
 
     document.getElementById('deal')?.addEventListener('click', () => deal());
     const dial = document.getElementById('messy') as HTMLInputElement | null;
     dial?.addEventListener('input', () => {
       messy = Number(dial.value);
-      buildStacks();
-      layOutAll();
+      reshape();
       report();
     });
     document.getElementById('squeeze')?.addEventListener('click', () => {
       squeezed = !squeezed;
-      buildStacks();
-      layOutAll();
+      reshape();
       report();
     });
 
-    buildStacks();
+    printFelt();
     deal();
     report();
 
     // The handle a console session - or the smoke test - reaches the board by.
-    expose({ board, piles: () => piles });
+    expose({ board, table, piles: () => piles });
   },
 });
 
