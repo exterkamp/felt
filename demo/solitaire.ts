@@ -33,12 +33,12 @@ export const scene = defineScene({
     // The stock: nothing is dragged off it; a tap turns a card onto the waste.
     const stock = table.pile({ id: 'stock', x: x(0), y: TOP, faceUp: false, drag: false });
     const waste = table.pile({ id: 'waste', x: x(1), y: TOP, faceUp: true, accepts: () => false });
-    // Foundations: an ace, then the same suit one rank up, one card at a time.
+    // Foundations: one per suit, labelled with it. Only that suit, from its
+    // ace up, one card at a time.
     const foundations = SUITS.map((suit, i) => table.pile({
       id: `foundation-${suit}`, x: x(3 + i), y: TOP, faceUp: true,
-      accepts: (cards, pile) => cards.length === 1 && (pile.topCard
-        ? cards[0].suit === pile.topCard.suit && value(cards[0]) === value(pile.topCard) + 1
-        : value(cards[0]) === 1),
+      accepts: ([card, ...more], pile) => !more.length && card.suit === suit
+        && value(card) === (pile.topCard ? value(pile.topCard) : 0) + 1,
     }));
     // Columns: a king on an empty one, else one rank down in the other colour.
     // Any face-up run may be picked up, as long as it is itself in sequence.

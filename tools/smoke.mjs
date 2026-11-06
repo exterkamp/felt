@@ -789,6 +789,12 @@ const sol = JSON.parse(await evaluate(`(async () => {
   // The stock: a tap turns one onto the waste.
   const s = f.stock.top; fire('pointerdown', s.x, s.y); fire('pointerup', s.x, s.y); await wait(700);
   const tapped = { waste: f.waste.size, up: f.waste.top?.card.faceUp };
+  // Each foundation takes only its own suit: the ace of hearts on the spades'
+  // is refused, on the hearts' it goes, and the two of hearts follows it.
+  const dataOf = (id) => ({ ...f.table.card(id).card, faceUp: true });
+  const [spades, hearts] = f.foundations;
+  const suits = { aceOnSpades: spades.accepts([dataOf('hearts-A')]), aceOnHearts: hearts.accepts([dataOf('hearts-A')]),
+    spadeAce: spades.accepts([dataOf('spades-A')]), twoFirst: hearts.accepts([dataOf('hearts-2')]) };
   // A run: the queen and jack on one column go together onto a king - set
   // up with sync, the way a saved game or a server's state would be shown.
   const setup = { 'column-0': ['clubs-K'], 'column-1': ['diamonds-9', 'hearts-Q', 'spades-J'] };
@@ -801,13 +807,15 @@ const sol = JSON.parse(await evaluate(`(async () => {
   await drag(f.table.card('hearts-Q'), f.columns[0]);
   await wait(600);
   const run = { onKing: f.columns[0].cards.map(c => c.card.id).join(), left: f.columns[1].cards.map(c => c.card.id + (c.card.faceUp ? '+' : '-')).join() };
-  return JSON.stringify({ dealt, refused, made, waste: tapped.waste, wasteUp: tapped.up, run });
+  return JSON.stringify({ dealt, refused, made, waste: tapped.waste, wasteUp: tapped.up, run, suits });
 })()`));
 check(JSON.stringify(sol.dealt.sizes) === '[1,2,3,4,5,6,7]' && sol.dealt.tops && sol.dealt.under && sol.dealt.stock === 24,
   `solitaire deals seven columns, each with its last card turned up, and 24 in the stock`);
 check(sol.refused.stayed, 'a card dropped where the rules say no goes back to its column');
 check(sol.made && sol.made.landed && sol.made.uncovered, `a legal move made by hand lands, and the card it uncovers turns up`);
 check(sol.waste === 1 && sol.wasteUp, 'a tap on the stock turns a card onto the waste, face up');
+check(!sol.suits.aceOnSpades && sol.suits.aceOnHearts && sol.suits.spadeAce && !sol.suits.twoFirst,
+  'each foundation takes only its own suit, from the ace up');
 check(sol.run.onKing === 'clubs-K,hearts-Q,spades-J' && sol.run.left === 'diamonds-9+',
   `a run picked up by its first card moves together, and uncovers the card under it (${sol.run.onKing} / ${sol.run.left})`);
 
