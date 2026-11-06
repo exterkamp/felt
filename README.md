@@ -102,6 +102,16 @@ pile). Tune it with `createBoard({ pickUp: { lift, maxSwivel, maxSway,
 stiffness, damping, perspective } })`, or turn it off with `pickUp: false`; on a flat
 board (`fov: 0`) it is off.
 
+**Flicking.** Let go of a dragged card while it is still moving and it keeps
+going. `pointer.velocity` is how fast the pointer was moving over its last
+tenth of a second, and zero if it had stopped. `flickCard(board, card,
+pointer.velocity, { grip, friction, bounds })` slides the card to a stop
+under friction. A hard flick hops off the felt and lands. Held off-centre,
+the card spins, and with `bounds` it bounces off the table's edges.
+`simulateFlick` gives the same path without playing it, so a game can know
+where a card will stop. The flick runs on the card's `move` channel, so
+picking the card up again catches it where it is.
+
 ## From phaser-card-engine
 
 The names were kept wherever the idea survived, so a port is mostly deleting

@@ -57,6 +57,8 @@ export { courtWorkerSupported, disposeCourtWorker } from './art/court-worker.js'
 export { renderTuckBox, tuckBoxTextureKey } from './art/tuck-box-art.js';
 export type { TuckBoxArt } from './art/tuck-box-art.js';
 
+export { flickCard, simulateFlick } from './play/flick.js';
+export type { FlickOptions, FlickPath, FlickStep } from './play/flick.js';
 export {
   dealCards, flightDuration, landingsFor, popCard, shortestTurn, spinTarget, throwCard, throwLanding,
 } from './play/flight.js';

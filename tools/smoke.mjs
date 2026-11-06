@@ -101,7 +101,7 @@ console.log(`smoking ${host}`);
 await send('Page.navigate', { url: `${host}/` });
 await sleep(700);
 const tiles = JSON.parse(await evaluate(`JSON.stringify([...document.querySelectorAll('a.demo')].map(a => a.href))`));
-check(tiles.length === 13, `the home screen lists thirteen demos (${tiles.length})`);
+check(tiles.length === 14, `the home screen lists fourteen demos (${tiles.length})`);
 let reachable = 0;
 let wayBack = 0;
 let boards = 0;
@@ -575,6 +575,51 @@ check(thrown.count === 2 && thrown.down, 'and comes down onto the pile it was th
 check(thrown.angled, 'a messy pile takes it at its own crooked angle');
 
 console.log('');
+// --- flicking: let go while moving and it keeps going ----------------------
+console.log('\nflicking');
+await open('flick.html', '__felt?.deck?.().length === 52');
+const flick = JSON.parse(await evaluate(`(async () => {
+  const f = __felt; const b = f.board; const rect = b.canvas.getBoundingClientRect();
+  const wait = (ms) => new Promise(r => setTimeout(r, ms));
+  const page = (x, y) => ({ clientX: rect.left + x / b.width * rect.width, clientY: rect.top + y / b.height * rect.height });
+  const fire = (type, x, y) => b.canvas.dispatchEvent(new PointerEvent(type, { ...page(x, y), pointerId: 11, bubbles: true }));
+  // A flick up the table.
+  const first = f.deck().at(-1); const x0 = first.x, y0 = first.y;
+  fire('pointerdown', x0, y0); await wait(200);
+  for (let i = 1; i <= 6; i++) { fire('pointermove', x0, y0 - i * 22); await wait(12); }
+  fire('pointerup', x0, y0 - 132);
+  let highest = 0; const t0 = performance.now();
+  while (performance.now() - t0 < 4000) { highest = Math.max(highest, first.shown.z); await wait(16); }
+  const flung = { travelled: Math.hypot(first.x - x0, first.y - y0), z: first.shown.z, highest,
+    inside: first.x > 0 && first.x < b.width && first.y > 0 && first.y < b.height,
+    score: document.getElementById('score').textContent };
+  // Moved, stopped, then let go: set down where it is.
+  const second = f.deck().at(-1);
+  fire('pointerdown', second.x, second.y); await wait(150);
+  for (let i = 1; i <= 4; i++) { fire('pointermove', second.x, second.y - 20); await wait(12); }
+  const placedAt = { x: second.x, y: second.y };
+  await wait(300);
+  fire('pointerup', placedAt.x, placedAt.y); await wait(1200);
+  const placed = Math.hypot(second.x - placedAt.x, second.y - placedAt.y);
+  // Flicked on ice, then caught while it slides.
+  document.getElementById('surface').click();
+  const third = f.deck().at(-1); const x3 = third.x, y3 = third.y;
+  fire('pointerdown', x3, y3); await wait(150);
+  for (let i = 1; i <= 6; i++) { fire('pointermove', x3 - i * 6, y3 - i * 10); await wait(12); }
+  fire('pointerup', x3 - 36, y3 - 60);
+  await wait(250);
+  fire('pointerdown', third.x, third.y);
+  const caughtAt = { x: third.x, y: third.y };
+  await wait(600);
+  const drift = Math.hypot(third.x - caughtAt.x, third.y - caughtAt.y);
+  fire('pointerup', third.x, third.y);
+  return JSON.stringify({ ...flung, placed, drift });
+})()`));
+check(flick.travelled > 150 && flick.inside, `a card flicked up the table keeps going, and stays on it (${Math.round(flick.travelled)} units)`);
+check(flick.z === 0 && /points|Missed/.test(flick.score), `and comes to rest flat, scored ("${flick.score.split(' -')[0]}")`);
+check(flick.placed < 2, `a card that stopped before it was let go is set down, not flung (${flick.placed.toFixed(1)} units)`);
+check(flick.drift < 3, `a card grabbed while it slides is caught where it is (${flick.drift.toFixed(1)} units of drift)`);
+
 // --- two seats: one game, three copies, in lockstep -------------------------
 console.log('\ntwo seats');
 await open('seats.html', '!!window.__felt?.server');

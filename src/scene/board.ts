@@ -88,6 +88,12 @@ export interface BoardPointer {
   node?: Node;
   /** How far it has moved since it went down. */
   distance: number;
+  /**
+   * How fast it is moving, in board units a second, over the last tenth of
+   * a second. At `pointerup`/`dragend`, the speed it was let go at - zero if
+   * it had stopped first, so a card set down is not a card flung.
+   */
+  velocity: { x: number; y: number };
   event: PointerEvent;
   /**
    * In a `dragstart` handler: this node is not to be dragged after all (a
@@ -123,6 +129,27 @@ function cssToRgba(color: string | number | undefined): [number, number, number,
   }
   const parts = css.match(/[\d.]+/g)?.map(Number) ?? [0, 0, 0, 1];
   return [parts[0] / 255, parts[1] / 255, parts[2] / 255, parts[3] ?? 1];
+}
+
+/** How long a pointer's motion is remembered for its velocity, ms. */
+const VELOCITY_WINDOW_MS = 100;
+
+/**
+ * Adds a sample to a pointer's trail and answers its velocity over the last
+ * `VELOCITY_WINDOW_MS`. Between two events alone it is noise - pointer events
+ * come in bursts - and an old sample would keep a stopped finger moving.
+ */
+export function trackVelocity(trail: { t: number; x: number; y: number }[], t: number, x: number, y: number):
+  { x: number; y: number } {
+  const last = trail[trail.length - 1];
+  // The same place again (an up where the last move was): time passes, the
+  // finger does not move.
+  if (!last || last.t !== t || last.x !== x || last.y !== y) trail.push({ t, x, y });
+  while (trail.length > 2 && t - trail[0].t > VELOCITY_WINDOW_MS) trail.shift();
+  const first = trail[0];
+  const span = t - first.t;
+  if (span <= 0 || t - first.t > VELOCITY_WINDOW_MS * 2) return { x: 0, y: 0 };
+  return { x: ((x - first.x) / span) * 1000, y: ((y - first.y) / span) * 1000 };
 }
 
 export class Board implements EngineMember {
@@ -169,7 +196,7 @@ export class Board implements EngineMember {
   private awake = 0;
   private destroyedFlag = false;
   private readonly handlers = new Map<string, Set<Handler>>();
-  private readonly pointers = new Map<number, BoardPointer & { dragging?: Node }>();
+  private readonly pointers = new Map<number, BoardPointer & { dragging?: Node; trail?: { t: number; x: number; y: number }[] }>();
   private readonly background: [number, number, number, number];
   private readonly resizeObserver?: ResizeObserver;
   private readonly cleanup: (() => void)[] = [];
@@ -472,9 +499,10 @@ export class Board implements EngineMember {
     const down = (event: PointerEvent) => {
       const at = this.toBoard(event.clientX, event.clientY);
       const node = this.pick(at.x, at.y);
-      const pointer: BoardPointer & { dragging?: Node } = {
+      const pointer: BoardPointer & { dragging?: Node; trail?: { t: number; x: number; y: number }[] } = {
         x: at.x, y: at.y, downX: at.x, downY: at.y, id: event.pointerId,
-        node, distance: 0, event, dragging: undefined as Node | undefined,
+        node, distance: 0, velocity: { x: 0, y: 0 }, event, dragging: undefined as Node | undefined,
+        trail: [{ t: event.timeStamp, x: at.x, y: at.y }],
         refuse: () => { pointer.dragging = undefined; },
       };
       this.pointers.set(event.pointerId, pointer);
@@ -493,13 +521,14 @@ export class Board implements EngineMember {
       const pointer = this.pointers.get(event.pointerId);
       if (!pointer) {
         this.emit('pointermove', { x: at.x, y: at.y, downX: at.x, downY: at.y,
-          id: event.pointerId, distance: 0, event });
+          id: event.pointerId, distance: 0, velocity: { x: 0, y: 0 }, event });
         return;
       }
       pointer.x = at.x;
       pointer.y = at.y;
       pointer.event = event;
       pointer.distance = Math.hypot(at.x - pointer.downX, at.y - pointer.downY);
+      pointer.velocity = trackVelocity(pointer.trail!, event.timeStamp, at.x, at.y);
       this.emit('pointermove', pointer);
       if (pointer.dragging) this.emit('drag', pointer, pointer.dragging);
     };
@@ -510,6 +539,7 @@ export class Board implements EngineMember {
       pointer.x = at.x;
       pointer.y = at.y;
       pointer.event = event;
+      pointer.velocity = trackVelocity(pointer.trail!, event.timeStamp, at.x, at.y);
       this.pointers.delete(event.pointerId);
       if (pointer.dragging) {
         this.emit('dragend', pointer, pointer.dragging);
