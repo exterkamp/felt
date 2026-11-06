@@ -45,6 +45,7 @@ export default defineConfig({
         home: resolve(__dirname, 'demo/index.html'),
         'one-stack': resolve(__dirname, 'demo/one-stack.html'),
         loading: resolve(__dirname, 'demo/loading.html'),
+        seats: resolve(__dirname, 'demo/seats.html'),
         stacks: resolve(__dirname, 'demo/stacks.html'),
         sizes: resolve(__dirname, 'demo/sizes.html'),
         throws: resolve(__dirname, 'demo/throws.html'),

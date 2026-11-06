@@ -101,7 +101,7 @@ console.log(`smoking ${host}`);
 await send('Page.navigate', { url: `${host}/` });
 await sleep(700);
 const tiles = JSON.parse(await evaluate(`JSON.stringify([...document.querySelectorAll('a.demo')].map(a => a.href))`));
-check(tiles.length === 11, `the home screen lists eleven demos (${tiles.length})`);
+check(tiles.length === 12, `the home screen lists twelve demos (${tiles.length})`);
 let reachable = 0;
 let wayBack = 0;
 let boards = 0;
@@ -522,6 +522,38 @@ check(thrown.count === 2 && thrown.down, 'and comes down onto the pile it was th
 check(thrown.angled, 'a messy pile takes it at its own crooked angle');
 
 console.log('');
+// --- two seats: one game, three copies, in lockstep -------------------------
+console.log('\ntwo seats');
+await open('seats.html', '!!window.__felt?.server');
+await until(`__felt.seats.south.state.hands.south.length === 6 && __felt.seats.north.state.hands.north.length === 6`, 15000);
+const seatsRun = JSON.parse(await evaluate(`(async () => {
+  const f = __felt; const wait = (ms) => new Promise(r => setTimeout(r, ms));
+  const turn = () => f.server.state.turn;
+  // Waits on the game rather than the wall clock: under software GL the
+  // engine's time runs slower than real time.
+  const landed = async (n) => { const t = performance.now();
+    while (f.server.state.pile.length < n && performance.now() - t < 10000) await wait(50); await wait(300); };
+  f.play(turn()); await landed(1);
+  const next = turn();
+  f.play(next); await landed(2);
+  f.play(next); await wait(1500);   // not their turn any more: refused by every copy alike
+  const afterRefused = f.server.state.pile.length;
+  document.getElementById('lag').click();   // 400 ms each way
+  f.play(turn()); await landed(3);
+  const s = f.server.state;
+  return JSON.stringify({ pile: s.pile.length, afterRefused, agreed: f.hashes.agreed, differed: f.hashes.differed,
+    late: f.seats.north.late + f.seats.south.late,
+    same: JSON.stringify(f.seats.north.state) === JSON.stringify(s) && JSON.stringify(f.seats.south.state) === JSON.stringify(s),
+    members: f.board.engine.memberCount, boards: f.boards.length,
+    drawn: f.boards.map(b => b.renderer.instanceCount) });
+})()`));
+check(seatsRun.pile === 3 && seatsRun.afterRefused === 2, `plays reach the game in turn, and an out-of-turn one is refused (${seatsRun.pile} on the pile)`);
+check(seatsRun.differed === 0 && seatsRun.agreed > 100 && seatsRun.same,
+  `server and both seats agree on every tick (${seatsRun.agreed} ticks compared, ${seatsRun.differed} differed)`);
+check(seatsRun.late === 0, `with 400 ms latency nothing arrives late: commands are stamped ahead of the trip (${seatsRun.late} late)`);
+check(seatsRun.boards === 2 && seatsRun.members === 2 && seatsRun.drawn.every(n => n >= 52),
+  `two boards on one engine, both drawing (${seatsRun.drawn.join(', ')} instances)`);
+
 // --- the demo as one page: scenes, not navigations --------------------------
 console.log('\nthe demo app');
 await send('Page.navigate', { url: `${host}/` });
@@ -562,7 +594,7 @@ const spa = JSON.parse(await evaluate(`(async () => {
     afterForward: app.director.scene, navigations: performance.getEntriesByType('navigation').length - loadsBefore,
     sameDocument: !!window.__feltApp });
 })()`));
-const opened = spa.visits.filter(v => v.scene === v.name && v.canvases === 1 && v.members === 1 && v.drawn > 0 && v.hash === '#/' + v.name);
+const opened = spa.visits.filter(v => v.scene === v.name && v.canvases >= 1 && v.members === v.canvases && v.drawn > 0 && v.hash === '#/' + v.name);
 if (opened.length !== spa.visits.length) console.log(JSON.stringify(spa.visits.filter(v => !opened.includes(v))));
 check(opened.length === spa.visits.length, `every demo opens as a scene in one page, with its board drawing (${opened.length}/${spa.visits.length})`);
 check(spa.leftovers === 0, `leaving a scene leaves nothing behind: no canvas, board, timer or meter (${spa.leftovers} left something)`);
