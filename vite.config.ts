@@ -48,6 +48,7 @@ export default defineConfig({
         seats: resolve(__dirname, 'demo/seats.html'),
         stress: resolve(__dirname, 'demo/stress.html'),
         flick: resolve(__dirname, 'demo/flick.html'),
+        magnets: resolve(__dirname, 'demo/magnets.html'),
         stacks: resolve(__dirname, 'demo/stacks.html'),
         sizes: resolve(__dirname, 'demo/sizes.html'),
         throws: resolve(__dirname, 'demo/throws.html'),

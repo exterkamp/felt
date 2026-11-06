@@ -101,7 +101,7 @@ console.log(`smoking ${host}`);
 await send('Page.navigate', { url: `${host}/` });
 await sleep(700);
 const tiles = JSON.parse(await evaluate(`JSON.stringify([...document.querySelectorAll('a.demo')].map(a => a.href))`));
-check(tiles.length === 14, `the home screen lists fourteen demos (${tiles.length})`);
+check(tiles.length === 15, `the home screen lists fifteen demos (${tiles.length})`);
 let reachable = 0;
 let wayBack = 0;
 let boards = 0;
@@ -661,6 +661,52 @@ check(walls.up.high > 12 && walls.up.over > 1.4 && walls.up.z === 0 && walls.up.
 // finishing as it is let go, and that is not the flick.
 check(walls.side.high === 0 && walls.side.afterWall > 10,
   `in 2D it stays on the felt and a corner hit sets it spinning off the wall (${walls.side.afterWall.toFixed(0)} degrees after the wall)`);
+// --- magnetic stacks: flicked near its suit, it is drawn in -----------------
+console.log('\nmagnetic stacks');
+await open('magnets.html', '__felt?.deck?.().length === 52');
+const mag = JSON.parse(await evaluate(`(async () => {
+  const f = __felt; const b = f.board; const rect = b.canvas.getBoundingClientRect();
+  const wait = (ms) => new Promise(r => setTimeout(r, ms));
+  const page = (x, y) => ({ clientX: rect.left + x / b.width * rect.width, clientY: rect.top + y / b.height * rect.height });
+  const fire = (type, x, y) => b.canvas.dispatchEvent(new PointerEvent(type, { ...page(x, y), pointerId: 13, bubbles: true }));
+  const count = () => f.stacks().reduce((n, s) => n + s.count, 0);
+  /** Carries the top card to (x, y), then either sets it down or flicks it by (dx, dy) a move. */
+  const carry = async (to, flick) => {
+    const card = f.deck().at(-1); let x = card.x, y = card.y;
+    fire('pointerdown', x, y); await wait(150);
+    for (let i = 1; i <= 10; i++) { fire('pointermove', x + (to.x - x) * i / 10, y + (to.y - y) * i / 10); await wait(16); }
+    x = to.x; y = to.y; await wait(250);
+    if (flick) { for (let i = 1; i <= 6; i++) { fire('pointermove', x + i * flick.x, y + i * flick.y); await wait(12); }
+      fire('pointerup', x + 6 * flick.x, y + 6 * flick.y); }
+    else fire('pointerup', x, y);
+    const t = performance.now();
+    while (performance.now() - t < 3000 && f.loose().includes(card) === false && count() === 0) await wait(30);
+    await wait(1800);
+    return card;
+  };
+  const stackOf = (card) => f.stacks().find(s => s.suit === card.card.suit);
+  // Set down a little off its own stack: drawn the rest of the way, squared up.
+  let card = f.deck().at(-1); let own = stackOf(card);
+  await carry({ x: own.x + 40, y: own.y + 45 });
+  const setDown = { count: count(), dx: card.x - own.x, dy: card.y - own.y, angle: card.angle, z: card.shown.z, faceUp: card.card.faceUp };
+  // Set down on another suit's stack: not pulled.
+  card = f.deck().at(-1);
+  const other = f.stacks().find(s => s.suit !== card.card.suit);
+  await carry({ x: other.x + 30, y: other.y + 40 });
+  const wrong = { count: count(), loose: f.loose().includes(card), off: Math.hypot(card.x - other.x, card.y - other.y) };
+  // Flicked at its stack from a card's length below it, off to one side.
+  card = f.deck().at(-1); own = stackOf(card);
+  const before = count();
+  await carry({ x: own.x + 25, y: own.y + 220 }, { x: -2, y: -12 });
+  const flicked = { gained: count() - before, d: Math.hypot(card.x - own.x, card.y - own.y), angle: card.angle };
+  return JSON.stringify({ setDown, wrong, flicked });
+})()`));
+check(mag.setDown.count === 1 && Math.hypot(mag.setDown.dx, mag.setDown.dy) < 1 && Math.abs(mag.setDown.angle % 360) < 0.01 && mag.setDown.faceUp,
+  `a card set down near its suit's stack is drawn onto it and squared up (${Math.hypot(mag.setDown.dx, mag.setDown.dy).toFixed(2)} units off)`);
+check(mag.wrong.count === 1 && mag.wrong.loose && mag.wrong.off > 30,
+  `another suit's stack does not pull it (${mag.wrong.off.toFixed(0)} units away, loose)`);
+check(mag.flicked.gained === 1 && mag.flicked.d < 3,
+  `a card flicked at its stack curves in and lands on it (${mag.flicked.d.toFixed(1)} units off)`);
 // --- two seats: one game, three copies, in lockstep -------------------------
 console.log('\ntwo seats');
 await open('seats.html', '!!window.__felt?.server');

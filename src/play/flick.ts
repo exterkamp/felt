@@ -56,8 +56,29 @@ export interface FlickOptions {
    * Default 0.32.
    */
   kick?: number;
-  /** Called once, when it comes to rest. */
-  onRest?: () => void;
+  /**
+   * Places that draw the card in as it slides by: stacks it may land on. On
+   * the felt, inside a magnet's reach, it is pulled towards the middle -
+   * harder the nearer it is - and slowed, so a card flicked near one curves
+   * in rather than sailing past; one that comes to rest inside a reach, or
+   * drifts close and slow, is drawn the rest of the way and squared up on it.
+   * Fast enough, it gets away. Give only the ones it may validly land on.
+   */
+  magnets?: Magnet[];
+  /** Pull at a magnet's middle, units a second squared. Default 5200. */
+  pull?: number;
+  /** Called once, when it comes to rest, with where it went. */
+  onRest?: (path: FlickPath) => void;
+}
+
+/** Somewhere a flicked card is drawn to. */
+export interface Magnet {
+  x: number;
+  y: number;
+  /** The angle it settles at, in degrees. Default 0. */
+  angle?: number;
+  /** How far away it starts to pull, in board units. Default 90. */
+  reach?: number;
 }
 
 /** One moment of a flick. */
@@ -86,6 +107,8 @@ export interface FlickPath {
    */
   flipped: boolean;
   turnedRound: boolean;
+  /** Which of the magnets it ended up on, by index, if any. */
+  caught?: number;
 }
 
 const DT = 1 / 120;
@@ -140,6 +163,19 @@ export function simulateFlick(
   let flipRate = 0;
   const halves = { turn: 0, tilt: 0 };
   const steps: FlickStep[] = [{ t: 0, x, y, z, angle, tilt: 0, turn: 0 }];
+  const magnets = options.magnets ?? [];
+  const pull = options.pull ?? 5200;
+  let caught: number | undefined;
+  /** The nearest magnet whose reach it is in, and how deep in (0 at the edge, 1 dead on). */
+  const nearest = () => {
+    let best: { i: number; d: number; k: number } | undefined;
+    magnets.forEach((m, i) => {
+      const d = Math.hypot(m.x - x, m.y - y);
+      const reach = m.reach ?? 90;
+      if (d < reach && (!best || d < best.d)) best = { i, d, k: 1 - d / reach };
+    });
+    return best;
+  };
 
   /** Seconds until it is back on the felt, from height z going up at vz. */
   const timeToLand = (h: number, up: number) => (up + Math.sqrt(up * up + 2 * gravity * h)) / gravity;
@@ -236,6 +272,24 @@ export function simulateFlick(
         vy *= 0.82;
       }
     } else {
+      // Drawn in: pulled to the middle and slowed, more the nearer it is,
+      // so it falls in rather than orbiting. Before friction, so a pull too
+      // weak to beat the felt leaves it where it is (and drawn in after).
+      const near = nearest();
+      if (near) {
+        const m = magnets[near.i];
+        if (near.d < 8 && Math.hypot(vx, vy) < 260) {
+          caught = near.i;
+          break;
+        }
+        const a = pull * near.k * DT;
+        vx += ((m.x - x) / Math.max(near.d, 1e-6)) * a;
+        vy += ((m.y - y) / Math.max(near.d, 1e-6)) * a;
+        const drag = Math.exp(-7 * near.k * DT);
+        vx *= drag;
+        vy *= drag;
+        spin *= Math.exp(-5 * near.k * DT);
+      }
       // Skidding: friction against its motion, until it stops.
       const v = Math.hypot(vx, vy);
       const slow = friction * DT;
@@ -271,12 +325,34 @@ export function simulateFlick(
     steps.push({ t, x, y, z, angle, tilt, turn });
     if (z === 0 && vz === 0 && vx === 0 && vy === 0 && spin === 0) break;
   }
+  const turnedRound = halves.tilt % 2 === 1;
+  // Stopped inside a reach: that magnet has it.
+  if (caught === undefined && z === 0) caught = nearest()?.i;
+  if (caught !== undefined) {
+    // The last of the way, eased, squaring up as it goes. A card that will
+    // be turned round as the flick hands over lands that much short of it.
+    const m = magnets[caught];
+    const want = (m.angle ?? 0) - (turnedRound ? 180 : 0);
+    const to = want + 360 * Math.round((angle - want) / 360);
+    const from = { x, y, angle };
+    const last = steps[steps.length - 1];
+    const glide = Math.min(0.32, 0.14 + Math.hypot(m.x - x, m.y - y) * 0.0015 + Math.abs(to - angle) * 0.0008);
+    const n = Math.max(1, Math.round(glide / DT));
+    for (let i = 1; i <= n; i++) {
+      const e = 1 - (1 - i / n) ** 3;
+      t += DT;
+      steps.push({
+        t, x: from.x + (m.x - from.x) * e, y: from.y + (m.y - from.y) * e, z: 0,
+        angle: from.angle + (to - from.angle) * e, tilt: last.tilt, turn: last.turn,
+      });
+    }
+  }
   return {
     steps, duration: t * 1000, bounces, airborne: airborne * 1000,
     turnFlips: halves.turn, tiltFlips: halves.tilt,
     // Half a turn about each axis together is half a turn in the plane.
     flipped: (halves.turn + halves.tilt) % 2 === 1,
-    turnedRound: halves.tilt % 2 === 1,
+    turnedRound, caught,
   };
 }
 
@@ -342,7 +418,7 @@ export function flickCard(
     complete: () => {
       if (path.turnedRound) card.angle += 180;
       if (path.flipped && sprite.setFaceUp && sprite.card) sprite.setFaceUp(!sprite.card.faceUp);
-      options.onRest?.();
+      options.onRest?.(path);
     },
   };
   return animatorOf(host).play(sprite, spec);

@@ -163,3 +163,46 @@ describe('meeting a wall', () => {
     expect(highest).toBe(0);
   });
 });
+
+describe('magnets', () => {
+  const stack = { x: 240, y: 200 };
+  const flat = { mode: '2d' as const };
+  it('draw in a card that stops short of one, and square it up', () => {
+    const path = simulateFlick({ x: 270, y: 600, angle: 14 }, { x: 0, y: -1000 }, { ...flat, magnets: [stack] });
+    const end = path.steps.at(-1)!;
+    expect(path.caught).toBe(0);
+    expect([end.x, end.y]).toEqual([240, 200]);
+    expect(end.angle % 360).toBeCloseTo(0, 6);
+  });
+  it('catch one flicked straight over the middle, which would have gone on without it', () => {
+    const free = simulateFlick({ x: 240, y: 600, angle: 0 }, { x: 0, y: -1600 }, flat);
+    expect(free.steps.at(-1)!.y).toBeLessThan(100);
+    expect(simulateFlick({ x: 240, y: 600, angle: 0 }, { x: 0, y: -1600 }, { ...flat, magnets: [stack] }).caught).toBe(0);
+  });
+  it('let a card go that is fast enough, or never comes near', () => {
+    expect(simulateFlick({ x: 240, y: 600, angle: 0 }, { x: 0, y: -2400 }, { ...flat, magnets: [stack] }).caught).toBeUndefined();
+    expect(simulateFlick({ x: 240, y: 600, angle: 0 }, { x: 0, y: -700 }, { ...flat, magnets: [stack] }).caught).toBeUndefined();
+  });
+  it('pick the one it ends up nearest', () => {
+    const path = simulateFlick({ x: 300, y: 600, angle: 0 }, { x: 0, y: -1100 },
+      { ...flat, magnets: [stack, { x: 352, y: 200 }] });
+    expect(path.caught).toBe(1);
+  });
+  it('take a card set down inside the reach', () => {
+    const path = simulateFlick({ x: 290, y: 230, angle: 0 }, { x: 0, y: 0 }, { ...flat, magnets: [stack] });
+    expect(path.caught).toBe(0);
+    expect(path.steps.at(-1)!.x).toBe(240);
+  });
+  it('settle it at the stack\'s own angle', () => {
+    const path = simulateFlick({ x: 250, y: 230, angle: 170 }, { x: 0, y: 0 }, { ...flat, magnets: [{ ...stack, angle: 90 }] });
+    expect(path.steps.at(-1)!.angle).toBeCloseTo(90, 6);
+  });
+  it('allow for the half turn a wall flip hands over, so it still lands square', () => {
+    // Up into the top wall in 3D, once over end over end, and back down onto the stack.
+    const path = simulateFlick({ x: 240, y: 160, angle: 0 }, { x: 0, y: -1000 },
+      { mode: '3d', bounds: { left: 0, top: 0, right: 480, bottom: 720 }, magnets: [{ x: 240, y: 200 }] });
+    expect(path.turnedRound).toBe(true);
+    expect(path.caught).toBe(0);
+    expect(path.steps.at(-1)!.angle + 180).toBeCloseTo(0 + 360 * Math.round((path.steps.at(-1)!.angle + 180) / 360), 6);
+  });
+});

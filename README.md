@@ -119,6 +119,17 @@ width. On a flat board (`board.setFov(0)`), it stays on the felt.
 where a card will stop. The flick runs on the card's `move` channel, so
 picking the card up again catches it where it is.
 
+**Magnets.** `flickCard(..., { magnets: [{ x, y, angle, reach }] })` gives a
+flick places it can land. On the felt, inside a magnet's reach (default 90),
+the card is pulled towards the middle, harder the nearer it is, and slowed,
+so a card flicked near one curves in rather than sailing past. One that
+stops inside a reach, or drifts in close and slow, glides the rest of the
+way and squares up to the magnet's angle. A fast enough card gets away. The
+game decides which places are valid and passes only those, so a stack that
+can't take the card doesn't pull it. `onRest(path)` reports
+`path.caught`, the index of the magnet that took it. The Magnetic stacks
+demo has one stack per suit.
+
 ## From phaser-card-engine
 
 The names were kept wherever the idea survived, so a port is mostly deleting
