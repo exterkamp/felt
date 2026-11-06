@@ -716,7 +716,7 @@ const panel = JSON.parse(await evaluate(`(async () => {
   return JSON.stringify({ was, open: !aside.hidden, titles: [...aside.querySelectorAll('summary')].map(s => s.textContent),
     code: aside.querySelector('pre')?.textContent ?? '', api: [...aside.querySelectorAll('.api')].map(s => s.textContent) });
 })()`));
-check(panel.was && panel.open && panel.titles.length >= 2 && panel.code.includes('stacks.filter') && panel.api.includes('flickCard'),
+check(panel.was && panel.open && panel.titles.length >= 2 && panel.code.includes('accepts:') && panel.api.includes('createTable'),
   `the Code button opens the demo's own source, in regions (${panel.titles.length}: "${panel.titles[0]}"…), felt's names marked`);
 
 // --- the tour: a long page, a board per idea, its code inline ---------------

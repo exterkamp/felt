@@ -75,6 +75,6 @@ export { TuckBox, supportsTuckBox } from './play/tuck-box.js';
 export type { TuckBoxOptions } from './play/tuck-box.js';
 export { HandZone, Pile, Table, Zone, createTable } from './table/table.js';
 export type {
-  Accepts, CanTake, DragOptions, TableDealOptions, HandOptions, MoveCause, MoveOptions, PileOptions, SyncOptions,
+  Accepts, CanTake, DragOptions, FlickRelease, TableDealOptions, HandOptions, MoveCause, MoveOptions, PileOptions, SyncOptions,
   TableMove, TableOptions, TableTap, ZoneRules,
 } from './table/table.js';

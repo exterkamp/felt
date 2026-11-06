@@ -152,10 +152,14 @@ export interface DragOptions {
   /** An outline where the card will land, while it is over somewhere it may. Default true. */
   highlight?: boolean;
   /**
-   * Let go moving fast and a single card is flicked, drawn in by the zones
-   * that accept it. True for the defaults, or flick options. Default off.
+   * A single card let go anywhere but over a zone that takes it carries on
+   * with the speed it was let go at - a flick, or a set-down if it had
+   * stopped - and the zones that accept it draw it in as it slides. One that
+   * comes to rest in none of them is left loose on the felt (`loose`, the
+   * default) or sent back. True for the defaults, or flick options with
+   * `reach`, how far a zone pulls from (default 90). Default off.
    */
-  flick?: boolean | (FlickOptions & { speed?: number; loose?: boolean });
+  flick?: boolean | FlickRelease;
   /**
    * The game's say, after the rules have passed a drop: true (or nothing) to
    * make the move, false to send the cards back, 'hold' to leave them where
@@ -166,8 +170,15 @@ export interface DragOptions {
   settle?: number;
 }
 
+/** How a table flicks a card let go: a flick's options, and two of its own. */
+export type FlickRelease = FlickOptions & { loose?: boolean; reach?: number };
+
 type Events = {
   move: TableMove;
+  /** Cards picked up by a drag. */
+  take: { cards: readonly CardSprite[]; from: Zone | undefined };
+  /** Cards let go at the end of a drag, and where they were over (before any flick). */
+  drop: { cards: readonly CardSprite[]; from: Zone | undefined; to: Zone | undefined; velocity: Point };
   tap: TableTap;
   /** A drop the rules or the game turned down. */
   refuse: { cards: readonly CardSprite[]; from: Zone | undefined; to: Zone | undefined };
@@ -378,7 +389,8 @@ export class Table {
     if (existing) return existing;
     const sprite = new CardSprite(this.board, { ...data }, this.options.style);
     if (at) sprite.setPosition(at.x, at.y);
-    sprite.draggable = this.dragOff !== undefined;
+    // Interactive, so taps find it; draggable while the table is.
+    sprite.setInteractive(this.dragOff !== undefined);
     this.sprites.set(data.id, sprite);
     return sprite;
   }
@@ -497,8 +509,16 @@ export class Table {
       touched.add(to);
     }
     for (const move of moved.values()) this.emit('move', { ...move, by: 'sync' });
-    const landed = flights.map(({ card, to }, i) => this.fly([card], to, new Set(),
-      { ...options, instant: appear.has(card) || options.instant, delay: (options.delay ?? 0) + i * stagger }));
+    // Staggered one after another - except cards that have nowhere to go (a
+    // new card made where it belongs), which simply take their place.
+    let n = 0;
+    const landed = flights.map(({ card, to }) => {
+      const place = to.places(to.list.length)[to.list.indexOf(card)];
+      const instant = options.instant || appear.has(card)
+        || (Math.hypot(card.x - place.x, card.y - place.y) < 0.5 && card.angle === place.angle);
+      return this.fly([card], to, new Set(),
+        { ...options, instant, delay: (options.delay ?? 0) + (instant ? 0 : n++ * stagger) });
+    });
     for (const zone of touched) zone.layout();
     return Promise.all(landed).then(() => undefined);
   }
@@ -587,7 +607,7 @@ export class Table {
    * Lets the player move cards by hand, by the zones' rules: a drag picks up
    * what `drag`/`canTake` allow, the outline shows where it would land, and
    * a drop moves it to the zone it is over most that `accepts` it - or sends
-   * it back. With `flick`, a card let go fast is flicked, and drawn into the
+   * it back. With `flick`, a card let go off every zone carries on, and is drawn into the
    * zones that would accept it.
    */
   draggable(options: DragOptions = {}): Dispose {
@@ -643,6 +663,7 @@ export class Table {
         offsets: cards.map((c) => ({ x: c.x - card.x, y: c.y - card.y })),
       };
       cards.forEach((c, i) => { this.held.add(c); c.depth = HELD_DEPTH + i; c.angle = 0; });
+      this.emit('take', { cards, from });
     };
 
     const move = (pointer: BoardPointer) => {
@@ -669,12 +690,12 @@ export class Table {
       for (const c of d.cards) this.held.delete(c);
       const to = targetFor(d);
       const velocity = pointer.velocity ?? { x: 0, y: 0 };
-      const fast = Math.hypot(velocity.x, velocity.y) >= (flick?.speed ?? 450);
+      this.emit('drop', { cards: d.cards, from: d.from, to, velocity });
       const back = () => {
         if (d.from) void this.move(d.cards, d.from, { index: d.from.list.indexOf(d.cards[0]), duration: settle,
           spins: 0, arc: 6, pop: false, by: 'drag' });
       };
-      if (flick && fast && d.cards.length === 1 && !to) {
+      if (flick && d.cards.length === 1 && !to) {
         this.flickOut(d.cards[0], d.from, velocity, d.grip, flick, back);
         return;
       }
@@ -708,7 +729,7 @@ export class Table {
 
   /** A single card flicked: the zones that would take it pull it in. */
   private flickOut(card: CardSprite, from: Zone | undefined, velocity: Point, grip: Point,
-    flick: FlickOptions & { loose?: boolean }, back: () => void): void {
+    flick: FlickRelease, back: () => void): void {
     const targets = this.zones.filter((z) => z !== from && z.accepts([card.card], from));
     const { width, height } = this.cardSize();
     const token = ++this.tokens;
@@ -719,7 +740,7 @@ export class Table {
       bounds: { left: 0, top: 0, right: this.board.width, bottom: this.board.height },
       ...flick,
       grip,
-      magnets: targets.map((z) => ({ ...z.next(), reach: 90 })),
+      magnets: targets.map((z) => ({ ...z.next(), reach: flick.reach ?? 90 })),
       onRest: (path) => {
         if (this.moving.get(card) !== token) return;
         this.moving.delete(card);

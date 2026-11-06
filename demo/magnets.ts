@@ -1,16 +1,14 @@
 import './serve';
 import {
-  CARD_HEIGHT, CARD_WIDTH, CardSprite, Magnet, SUITS, SUIT_COLORS, Suit, animatorOf, buildDeck, defineScene,
-  flickCard, flipCard, loadCardArt, seeded, shuffle, throwCard,
+  CARD_HEIGHT, CARD_WIDTH, SUITS, SUIT_COLORS, Suit, buildDeck, createTable, defineScene, flipCard, seeded, shuffle,
 } from 'felt';
 import { showCode } from './code';
-import { expose, label, standalone } from './kit';
+import { button, expose, label, standalone } from './kit';
 
-// Flicking onto stacks. The same flick as the Flicking demo, given magnets:
-// the places this card may validly land. Here that is the stack of its own
-// suit, so only that one pulls - a heart slides straight past the spades.
-// Which stacks a card may go to is the game's rule; how it is drawn in is
-// the flick's (see `magnets` in FlickOptions).
+// Flicking onto stacks. Four piles, one per suit, each accepting only its
+// own suit - and that one rule is everything: a drop is allowed by it, the
+// outline shows only over a pile it allows, and a flicked card is pulled in
+// only by the piles it allows, so a heart slides straight past the spades.
 
 const W = 480;
 const H = 720;
@@ -19,28 +17,28 @@ const ROW_Y = 200;
 const REACH = 84;
 const SYMBOL: Record<Suit, string> = { spades: '♠', hearts: '♥', diamonds: '♦', clubs: '♣' };
 
-interface Stack {
-  suit: Suit;
-  x: number;
-  y: number;
-  cards: CardSprite[];
-  lit: { alpha: number };
-}
-
 export const scene = defineScene({
   name: 'magnets',
   create(ctx) {
     showCode(ctx);
     const board = ctx.board({ parent: 'board', width: W, height: H, backgroundColor: '#13463a' });
-    void loadCardArt(board);
-    const animator = animatorOf(board);
-
     const gap = W / SUITS.length;
-    const stacks: Stack[] = SUITS.map((suit, i) => {
-      const x = gap * (i + 0.5);
-      const red = SUIT_COLORS[suit] === 'red';
-      // The place: an outline with its suit in it, and a glow for when the
-      // card in the hand belongs there.
+
+    // #region Four stacks that accept only their own suit
+    const table = createTable(board);
+    const deck = table.pile({ id: 'deck', ...DECK, faceUp: false });
+    const stacks = SUITS.map((suit, i) => table.pile({
+      id: suit, x: gap * (i + 0.5), y: ROW_Y, faceUp: true,
+      drag: false,                                   // stacked is stacked
+      accepts: ([card]) => card.suit === suit,       // the game's whole rule
+    }));
+    // #endregion
+
+    // The places: an outline with its suit in it, and a glow for when the
+    // card in the hand belongs there.
+    const glows = stacks.map((stack) => {
+      const suit = stack.id as Suit;
+      const { x, y } = stack.stack;
       board.graphic(CARD_WIDTH + 10, CARD_HEIGHT + 10, (pen, w, h) => {
         pen.strokeStyle = 'rgba(207, 234, 208, 0.35)';
         pen.lineWidth = 2;
@@ -48,148 +46,66 @@ export const scene = defineScene({
         pen.beginPath();
         pen.roundRect(5, 5, w - 10, h - 10, 5);
         pen.stroke();
-        pen.fillStyle = red ? 'rgba(255, 140, 130, 0.35)' : 'rgba(207, 234, 208, 0.3)';
+        pen.fillStyle = SUIT_COLORS[suit] === 'red' ? 'rgba(255, 140, 130, 0.35)' : 'rgba(207, 234, 208, 0.3)';
         pen.font = '30px system-ui, sans-serif';
         pen.textAlign = 'center';
         pen.textBaseline = 'middle';
         pen.fillText(SYMBOL[suit], w / 2, h / 2 + 1);
-      }, { key: `magnet-${suit}`, x, y: ROW_Y, depth: -10 });
-      const lit = board.graphic(REACH * 2, REACH * 2, (pen, w, h) => {
-        const glow = pen.createRadialGradient(w / 2, h / 2, 10, w / 2, h / 2, w / 2);
-        glow.addColorStop(0, 'rgba(255, 209, 102, 0.32)');
-        glow.addColorStop(0.7, 'rgba(255, 209, 102, 0.12)');
-        glow.addColorStop(1, 'rgba(255, 209, 102, 0)');
-        pen.fillStyle = glow;
+      }, { key: `magnet-${suit}`, x, y, depth: -10 });
+      label(board, x, y + CARD_HEIGHT / 2 + 18, suit.toUpperCase());
+      const glow = board.graphic(REACH * 2, REACH * 2, (pen, w, h) => {
+        const light = pen.createRadialGradient(w / 2, h / 2, 10, w / 2, h / 2, w / 2);
+        light.addColorStop(0, 'rgba(255, 209, 102, 0.32)');
+        light.addColorStop(0.7, 'rgba(255, 209, 102, 0.12)');
+        light.addColorStop(1, 'rgba(255, 209, 102, 0)');
+        pen.fillStyle = light;
         pen.fillRect(0, 0, w, h);
-      }, { key: 'magnet-glow', x, y: ROW_Y, depth: -11 });
-      lit.alpha = 0;
-      label(board, x, ROW_Y + CARD_HEIGHT / 2 + 18, suit.toUpperCase());
-      return { suit, x, y: ROW_Y, cards: [], lit };
+      }, { key: 'magnet-glow', x, y, depth: -11 });
+      glow.alpha = 0;
+      return glow;
     });
     label(board, DECK.x, DECK.y + CARD_HEIGHT / 2 + 14, 'DECK');
 
-    let top = 100;
     let flicks = 0;
-    let deck: CardSprite[] = [];
-    const loose = new Set<CardSprite>();
-    const scoreLine = ctx.$('#score');
+    const stacked = () => stacks.reduce((n, s) => n + s.size, 0);
+    const say = (text: string) => { ctx.$('#score').textContent = text; };
 
-    function newDeck(): void {
-      deck = shuffle(buildDeck(), seeded(Date.now() % 100000)).map((card, i) => {
-        const sprite = new CardSprite(board, { ...card, faceUp: false });
-        sprite.setPosition(DECK.x, DECK.y);
-        sprite.depth = i;
-        sprite.draggable = true;
-        return sprite;
-      });
-    }
-
-    const suitOf = (card: CardSprite) => card.card.suit as Suit;
-    // #region Where a card may land: one magnet per valid stack
-    /** Where this card may go: the game's rule. One stack per suit. */
-    const validFor = (card: CardSprite) => stacks.filter((stack) => stack.suit === suitOf(card));
-    /** A stack's pull, at the top of its pile: each card sits a hair higher. */
-    const magnetOf = (stack: Stack): Magnet => ({
-      x: stack.x, y: stack.y - stack.cards.length * 0.35, angle: 0, reach: REACH,
+    // #region Dragging and flicking, by the stacks' rule
+    // A card let go off every stack carries on at the speed it was let go -
+    // flicked, or set down - and the stacks that accept it draw it in.
+    table.draggable({ flick: { reach: REACH } });
+    table.on('take', ({ cards: [card], from }) => {
+      if (from === deck) void flipCard(board, card, { faceUp: true, lift: 0, duration: 240 });
+      stacks.forEach((stack, i) => { glows[i].alpha = stack.accepts([card.card], from) ? 1 : 0; });
+    });
+    table.on('drop', ({ velocity }) => {
+      for (const glow of glows) glow.alpha = 0;
+      if (Math.hypot(velocity.x, velocity.y) >= 120) flicks++;
+    });
+    table.on('move', ({ cards: [card], to }) => {
+      if (to === deck) return;
+      if (!to) say(`Loose on the felt - the ${card.card.suit} are over there. ${stacked()} of 52 stacked.`);
+      else say(stacked() === 52 ? `All 52 stacked, in ${flicks} flicks.`
+        : `Onto the ${to.id}. ${stacked()} of 52 stacked, ${flicks} flicks.`);
     });
     // #endregion
-
-    const stacked = () => stacks.reduce((n, stack) => n + stack.cards.length, 0);
-    function say(text: string): void {
-      scoreLine.textContent = text;
-    }
-
-    let grip = { x: 0, y: 0 };
-    let held: CardSprite | undefined;
-    let lastFlick: unknown;
-
-    // #region Picking a card up
-    board.on('dragstart', (pointer, node) => {
-      const card = node as CardSprite;
-      const fromDeck = deck.includes(card);
-      if (fromDeck && card !== deck[deck.length - 1]) { pointer.refuse?.(); return; }
-      if (!fromDeck && !loose.has(card)) { pointer.refuse?.(); return; }   // already stacked
-      animator.stop(card, 'move');
-      grip = { x: pointer.x - card.x, y: pointer.y - card.y };
-      held = card;
-      card.depth = ++top + 1000;
-      if (fromDeck) {
-        deck.pop();
-        loose.add(card);
-        void flipCard(board, card, { faceUp: true, lift: 0, duration: 240 });
-      }
-      for (const stack of validFor(card)) stack.lit.alpha = 1;
-    });
-    // #endregion
-
-    board.on('drag', (pointer) => {
-      held?.setPosition(pointer.x - grip.x, pointer.y - grip.y);
-    });
-
-    // #region Flicking it, with magnets
-    board.on('dragend', (pointer) => {
-      const card = held;
-      held = undefined;
-      if (!card) return;
-      for (const stack of stacks) stack.lit.alpha = 0;
-      card.depth = ++top;
-      const v = pointer.velocity;
-      const speed = Math.hypot(v.x, v.y);
-      // Slow is set down, not flung - but set down near its stack, it is
-      // still drawn in.
-      const velocity = speed < 120 ? { x: 0, y: 0 } : v;
-      if (speed >= 120) flicks++;
-      const targets = validFor(card);
-      lastFlick = { velocity: { ...velocity }, suit: suitOf(card), from: { x: card.x, y: card.y } };
-      void flickCard(board, card, velocity, {
-        grip,
-        half: { x: CARD_WIDTH / 2, y: CARD_HEIGHT / 2 },
-        bounds: { left: 0, top: 0, right: W, bottom: H },
-        magnets: targets.map(magnetOf),
-        onRest: (path) => {
-          const stack = path.caught === undefined ? undefined : targets[path.caught];
-          if (!stack) {
-            if (speed >= 120) say(`Loose on the felt - the ${suitOf(card)} are over there. ${stacked()} of 52 stacked.`);
-            return;
-          }
-          loose.delete(card);
-          stack.cards.push(card);
-          card.draggable = false;
-          // A wall may have flipped it over on the way: a stack is face up.
-          if (!card.card.faceUp) void flipCard(board, card, { faceUp: true, lift: 0, duration: 200 });
-          say(stacked() === 52
-            ? `All 52 stacked, in ${flicks} flicks.`
-            : `Onto the ${stack.suit}. ${stacked()} of 52 stacked, ${flicks} flicks.`);
-        },
-      });
-    // #endregion
-    });
 
     // The same board, with and without its lens.
-    ctx.listen(ctx.$('#view'), 'click', (event) => {
+    button(ctx, 'view', (el) => {
       board.setFov(board.is3d ? 0 : 45);
-      (event.target as HTMLElement).textContent = `View: ${board.is3d ? '3D' : '2D'}`;
+      el.textContent = `View: ${board.is3d ? '3D' : '2D'}`;
     });
-    ctx.listen(ctx.$('#gather'), 'click', () => {
-      const out = [...loose, ...stacks.flatMap((stack) => stack.cards)];
-      loose.clear();
-      for (const stack of stacks) stack.cards = [];
-      out.forEach((card, i) => {
-        animator.stop(card, 'move');
-        deck.push(card);
-        card.setFaceUp(false);
-        card.draggable = true;
-        card.depth = deck.length;
-        void throwCard(board, card, DECK, { delay: i * 20, spins: 0, arc: 10, pop: false });
-      });
+    button(ctx, 'gather', () => {
+      const out = table.cards.filter((card) => table.zoneOf(card) !== deck);
+      void table.move(out, deck, { spins: 0, arc: 10, pop: false });
       flicks = 0;
       say('Flick each card at its suit.');
     });
 
-    newDeck();
+    deck.put(shuffle(buildDeck(), seeded(Date.now() % 100000)));
     expose({
-      board, deck: () => deck, loose: () => [...loose], lastFlick: () => lastFlick,
-      stacks: () => stacks.map((s) => ({ suit: s.suit, x: s.x, y: s.y, count: s.cards.length })),
+      board, table, deck: () => deck.cards, loose: () => table.cards.filter((c) => !table.zoneOf(c)),
+      stacks: () => stacks.map((s) => ({ suit: s.id, x: s.stack.x, y: s.stack.y, count: s.size })),
     });
   },
 });
