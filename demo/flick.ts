@@ -72,6 +72,8 @@ export const scene = defineScene({
       card.x < -CARD_WIDTH || card.x > W + CARD_WIDTH || card.y < -CARD_HEIGHT || card.y > H + CARD_HEIGHT;
 
     let grip = { x: 0, y: 0 };
+    /** What the last flick was, for anyone checking the physics. */
+    let lastFlick: unknown;
     let held: CardSprite | undefined;
 
     board.on('dragstart', (pointer, node) => {
@@ -105,6 +107,7 @@ export const scene = defineScene({
       const speed = Math.hypot(v.x, v.y);
       if (speed < 120) return;   // set down, not flicked
       flicks++;
+      lastFlick = { velocity: { ...v }, grip: { ...grip }, from: { x: card.x, y: card.y, angle: card.angle } };
       void flickCard(board, card, v, {
         grip,
         friction: SURFACES[surface],
@@ -138,6 +141,12 @@ export const scene = defineScene({
       walls = !walls;
       (event.target as HTMLElement).textContent = `Walls: ${walls ? 'on' : 'off'}`;
     });
+    // The same board, with and without its lens: flicks follow it, flat or
+    // in depth.
+    ctx.listen(ctx.$('#view'), 'click', (event) => {
+      board.setFov(board.is3d ? 0 : 45);
+      (event.target as HTMLElement).textContent = `View: ${board.is3d ? '3D' : '2D'}`;
+    });
     ctx.listen(ctx.$('#gather'), 'click', () => {
       // Back to the deck, face down, in a row of quick throws.
       [...table].forEach((card, i) => {
@@ -154,7 +163,7 @@ export const scene = defineScene({
     });
 
     newDeck();
-    expose({ board, deck: () => deck, table: () => [...table], ring: RING });
+    expose({ board, deck: () => deck, table: () => [...table], ring: RING, lastFlick: () => lastFlick });
   },
 });
 

@@ -89,3 +89,77 @@ describe('a flick', () => {
     expect(rested).toBe(true);
   });
 });
+
+describe('meeting a wall', () => {
+  const bounds = { left: 0, top: 0, right: 400, bottom: 600 };
+  const endOf = (p: ReturnType<typeof simulateFlick>) => p.steps[p.steps.length - 1];
+  const nearHalfTurns = (r: number) => Math.abs(r / Math.PI - Math.round(r / Math.PI)) < 1e-9;
+
+  it('in 2D, square on, it bounces straight back and hardly turns', () => {
+    const p = simulateFlick({ x: 200, y: 300, angle: 0 }, { x: 1600, y: 0 }, { bounds, mode: '2d', friction: 400 });
+    expect(p.bounces).toBeGreaterThan(0);
+    expect(Math.abs(endOf(p).angle)).toBeLessThan(1);
+    expect(endOf(p).x).toBeLessThan(370);
+  });
+
+  it('in 2D, corner first, the corner sets it spinning and it deflects', () => {
+    const p = simulateFlick({ x: 200, y: 300, angle: 30 }, { x: 1600, y: 0 }, { bounds, mode: '2d', friction: 400 });
+    expect(p.bounces).toBeGreaterThan(0);
+    expect(Math.abs(endOf(p).angle - 30)).toBeGreaterThan(20);
+    expect(Math.abs(endOf(p).y - 300)).toBeGreaterThan(5);
+  });
+
+  it('in 2D, it never leaves the felt and never turns over', () => {
+    const p = simulateFlick({ x: 200, y: 300, angle: 10 }, { x: 2600, y: -1900 }, { bounds, mode: '2d' });
+    expect(p.steps.every((s) => s.z === 0 && s.tilt === 0 && s.turn === 0)).toBe(true);
+    expect(p.flipped).toBe(false);
+  });
+
+  it('in 3D, a wall knocks it up and over, end over end, and it lands flat', () => {
+    const p = simulateFlick({ x: 200, y: 300, angle: 0 }, { x: 0, y: -1300 }, { bounds, mode: '3d' });
+    expect(p.bounces).toBeGreaterThan(0);
+    expect(p.tiltFlips).toBeGreaterThan(0);          // the top wall's line is the card's width
+    expect(p.turnFlips).toBe(0);
+    expect(Math.max(...p.steps.map((s) => s.z))).toBeGreaterThan(10);
+    const end = endOf(p);
+    expect(end.z).toBe(0);
+    expect(nearHalfTurns(end.tilt)).toBe(true);
+    expect(nearHalfTurns(end.turn)).toBe(true);
+    // Turned over somewhere in between: edge on to the camera at some point.
+    expect(p.steps.some((s) => Math.abs(Math.cos(s.tilt)) < 0.2)).toBe(true);
+  });
+
+  it('in 3D, a side wall turns it over about its length', () => {
+    const p = simulateFlick({ x: 200, y: 300, angle: 0 }, { x: 1300, y: 0 }, { bounds, mode: '3d' });
+    expect(p.turnFlips).toBeGreaterThan(0);
+    expect(p.tiltFlips).toBe(0);
+  });
+
+  it('turned over, the card itself is the other side up afterwards, and nothing jumps', async () => {
+    const host = { tweens: new Tweens(), distance: 800 };
+    const card = {
+      x: 200, y: 300, angle: 0, z: 0, tilt: 0, turn: 0, scaleX: 1, scaleY: 1,
+      card: { faceUp: true },
+      setFaceUp(up: boolean) { this.card.faceUp = up; },
+    };
+    const v = { x: 1300, y: 0 };
+    const p = simulateFlick({ x: 200, y: 300, angle: 0 }, v, { bounds, mode: '3d' });
+    const done = flickCard(host, card, v, { bounds });
+    for (let i = 0; i < 600; i++) host.tweens.update(16);
+    await done;
+    expect(card.card.faceUp).toBe(!p.flipped);
+    expect(card.turn).toBe(0);
+    expect(card.tilt).toBe(0);
+    expect(card.z).toBe(0);
+  });
+
+  it('on a flat board, flickCard flicks in 2D', async () => {
+    const host = { tweens: new Tweens(), distance: Infinity };
+    const card = { x: 200, y: 300, angle: 0, z: 0, tilt: 0, turn: 0, scaleX: 1, scaleY: 1 };
+    let highest = 0;
+    const done = flickCard(host, card, { x: 2400, y: -300 }, { bounds });
+    for (let i = 0; i < 600; i++) { host.tweens.update(16); highest = Math.max(highest, card.z); }
+    await done;
+    expect(highest).toBe(0);
+  });
+});

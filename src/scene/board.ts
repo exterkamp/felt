@@ -62,10 +62,11 @@ export interface BoardOptions {
   /**
    * What a dragged node does: lifts off the felt (its shadow falling further
    * out) and swivels with the motion of the drag, settling when it stops and
-   * dropping back when let go. On by default wherever there is perspective
-   * (fov above 0); `false` for none, or options to tune it.
+   * dropping back when let go. By default, whenever the board has
+   * perspective (fov above 0, now or after `setFov`); `true` or options to
+   * always, `false` for never.
    */
-  pickUp?: boolean | PickUpOptions;
+  pickUp?: boolean | 'auto' | PickUpOptions;
 }
 
 /**
@@ -162,8 +163,10 @@ export class Board implements EngineMember {
   private readonly transparent: boolean;
   /** Whose loop it runs on. */
   readonly engine: Engine;
-  /** Lifts and swivels whatever is being dragged; undefined on a flat board, or if turned off. */
+  /** Lifts and swivels whatever is being dragged; undefined if turned off. */
   readonly pickUp?: PickUp;
+  /** Whether it lifts on a flat board too, because it was asked for outright. */
+  private pickUpAlways = false;
   private unlistenCanvas: () => void = () => {};
   private watchdog: ReturnType<typeof setTimeout> | undefined;
   /** Times a dead context was replaced with a new canvas. */
@@ -237,9 +240,12 @@ export class Board implements EngineMember {
 
     this.engine = options.engine ?? pageEngine();
     this.cleanup.push(this.engine.add(this));
-    const pickUp = options.pickUp ?? Number.isFinite(this.distance);
-    if (pickUp) {
+    // Unless turned off, there is a pick-up; by default it only lifts while
+    // the board has perspective, which `setFov` can change at any time.
+    const pickUp = options.pickUp ?? 'auto';
+    if (pickUp !== false) {
       this.pickUp = new PickUp(this.engine, typeof pickUp === 'object' ? pickUp : {});
+      this.pickUpAlways = pickUp === true || typeof pickUp === 'object';
       this.cleanup.push(() => this.pickUp!.clear());
     }
 
@@ -335,6 +341,21 @@ export class Board implements EngineMember {
     this.emit('rebuilt');
     this.dirty = true;
     this.wake();
+  }
+
+  /** Whether the board has perspective: anything lifted or tipped is seen in depth. */
+  get is3d(): boolean {
+    return Number.isFinite(this.distance);
+  }
+
+  /**
+   * Changes the lens: 0 for a flat board, or the vertical view in degrees.
+   * Flat, picked-up cards stay on the felt and flicks stay in 2D.
+   */
+  setFov(fov: number): this {
+    this.distance = lensDistance(fov, this.height);
+    this.touch();
+    return this;
   }
 
   // --- fitting -------------------------------------------------------------
@@ -513,7 +534,7 @@ export class Board implements EngineMember {
         pointer.dragging = node;
         this.emit('dragstart', pointer, node);
         // Still the game's to drag once it has had its say: up it comes.
-        if (pointer.dragging) this.pickUp?.lift(node);
+        if (pointer.dragging && this.pickUp && (this.pickUpAlways || this.is3d)) this.pickUp.lift(node);
       }
     };
     const move = (event: PointerEvent) => {

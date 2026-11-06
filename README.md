@@ -107,7 +107,14 @@ going. `pointer.velocity` is how fast the pointer was moving over its last
 tenth of a second, and zero if it had stopped. `flickCard(board, card,
 pointer.velocity, { grip, friction, bounds })` slides the card to a stop
 under friction. A hard flick hops off the felt and lands. Held off-centre,
-the card spins, and with `bounds` it bounces off the table's edges.
+the card spins. With `bounds` it meets the table's edges as a rigid card:
+each wall hit is an impulse at the corner that struck. Square on, it bounces
+straight back. Corner first, it spins off at an angle, and a glancing hit
+twists it. On a board with perspective (`mode: '3d'`, the default there),
+the wall also knocks it up off the felt, end over end about the wall's line.
+It lands flat after a whole number of half turns: after an odd number the
+card itself is the other side up, and turned round if it went over its
+width. On a flat board (`board.setFov(0)`), it stays on the felt.
 `simulateFlick` gives the same path without playing it, so a game can know
 where a card will stop. The flick runs on the card's `move` channel, so
 picking the card up again catches it where it is.

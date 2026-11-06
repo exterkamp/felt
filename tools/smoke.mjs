@@ -620,6 +620,47 @@ check(flick.z === 0 && /points|Missed/.test(flick.score), `and comes to rest fla
 check(flick.placed < 2, `a card that stopped before it was let go is set down, not flung (${flick.placed.toFixed(1)} units)`);
 check(flick.drift < 3, `a card grabbed while it slides is caught where it is (${flick.drift.toFixed(1)} units of drift)`);
 
+
+const walls = JSON.parse(await evaluate(`(async () => {
+  const f = __felt; const b = f.board; const rect = b.canvas.getBoundingClientRect();
+  const wait = (ms) => new Promise(r => setTimeout(r, ms));
+  const page = (x, y) => ({ clientX: rect.left + x / b.width * rect.width, clientY: rect.top + y / b.height * rect.height });
+  const fire = (type, x, y) => b.canvas.dispatchEvent(new PointerEvent(type, { ...page(x, y), pointerId: 12, bubbles: true }));
+  const flickFrom = async (card, dx, dy, ms = 2500, grip = 0, moves = 6) => {
+    const x0 = card.x + grip, y0 = card.y + grip; let over = 0, high = 0, angles = [];
+    let lastX = card.x, back, afterWall = 0;
+    fire('pointerdown', x0, y0); await wait(150);
+    for (let i = 1; i <= moves; i++) { fire('pointermove', x0 + i * dx, y0 + i * dy); await wait(12); }
+    const was = card.card.faceUp;
+    fire('pointerup', x0 + moves * dx, y0 + moves * dy);
+    const t = performance.now(); const off = b.on('render', () => {
+      const p = card.shown; over = Math.max(over, Math.abs(p.tilt), Math.abs(p.turn)); high = Math.max(high, p.z); angles.push(p.angle);
+      // Off the right-hand wall: from when it starts back, how far it turns.
+      if (back === undefined && p.x < lastX - 0.5 && dx > 0) back = p.angle;
+      if (back !== undefined) afterWall = Math.max(afterWall, Math.abs(p.angle - back));
+      lastX = p.x; });
+    while (performance.now() - t < ms) await wait(30);
+    b.off('render', off);
+    return { over, high, turnedOver: card.card.faceUp !== was, spun: Math.max(...angles) - Math.min(...angles), afterWall, z: card.shown.z,
+      flat: Math.abs(Math.sin(card.shown.tilt)) + Math.abs(Math.sin(card.shown.turn)) };
+  };
+  // 3D: straight up into the top wall, hard.
+  document.getElementById('surface').textContent.includes('ice') && document.getElementById('surface').click();
+  const up = await flickFrom(f.deck().at(-1), 0, -30);
+  // 2D: the same board with its lens off, sideways into a wall.
+  b.setFov(0);
+  // Held by a corner, so it arrives turned and meets the wall corner first.
+  // Let go well short of the wall, so it has room to build up speed into it.
+  const side = await flickFrom(f.deck().at(-1), 32, -8, 2500, 16, 3);
+  b.setFov(45);
+  return JSON.stringify({ up, side });
+})()`));
+check(walls.up.high > 12 && walls.up.over > 1.4 && walls.up.z === 0 && walls.up.flat < 1e-6,
+  `in 3D a wall knocks a flicked card up and over end over end (${walls.up.high.toFixed(0)} units up, ${(walls.up.over / Math.PI).toFixed(2)} half turns at most), and it lands flat`);
+// Height only: the pick-up's own turn face up (flipCard) may still be
+// finishing as it is let go, and that is not the flick.
+check(walls.side.high === 0 && walls.side.afterWall > 10,
+  `in 2D it stays on the felt and a corner hit sets it spinning off the wall (${walls.side.afterWall.toFixed(0)} degrees after the wall)`);
 // --- two seats: one game, three copies, in lockstep -------------------------
 console.log('\ntwo seats');
 await open('seats.html', '!!window.__felt?.server');
