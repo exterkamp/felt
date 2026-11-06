@@ -27,6 +27,7 @@ await throwCard(board, cards[0], { x: 240, y: 320 }, { arc: 28 });
 | | |
 | --- | --- |
 | `src/core/` | Everything that draws nothing, carried over from phaser-card-engine **unchanged** with its tests: cards and suit vocabularies, `Stack` and `Hand` geometry, `cardFaceMetrics` and the three faces, shuffles and `riffleSplit`, the six decks and their inks, court palettes and the background parting, the tuck box as quads. Its own entry point, `felt/core`, and it runs in node. |
+| `src/runtime/` | `Engine` (the page's one loop, clock, fixed steps, lifecycle and services), `Clock` (`RafClock`, `ManualClock`), `PageLifecycle`, `Scene` and `Director`, `Disposables`, `Simulation` (deterministic game state for multiplayer). |
 | `src/gl/` | `Renderer` (one instanced program for every card and sprite, one depth-tested program for solid meshes), `Atlas` (every picture on a few 2048² layers of one texture array), `lens.ts` (the projection, written once in TypeScript and once in GLSL). |
 | `src/scene/` | `Board` (canvas, pixel ratio, fit, input, the sleep-when-still loop), `Node` and `Sprite`, `Tweens` with Phaser's config shape and ease names. |
 | `src/art/` | `CardSprite`, the face and back painters, suit pips, the court renderer and its worker, tuck box printing. |
@@ -123,6 +124,39 @@ more, and a third tap calls that off. Throwing a card again to where it is
 already flying, or re-fanning a hand to the places its cards are already
 going, carries on rather than starting over.
 
+## The engine, scenes and the page
+
+felt is a game engine, not only a renderer: see `docs/runtime.md` for how it
+was designed against Phaser, PixiJS, Excalibur, LittleJS, Kaplay, PlayCanvas
+and Babylon.
+
+- **One `Engine` per page** (`engine()`; `createEngine()` for tests and
+  servers). It runs the only frame loop, on a `Clock` (`RafClock` in a browser,
+  `ManualClock` by hand), and every board is a member of it. It sleeps when
+  nothing moves. Its `simTime` advances in fixed steps (`onFixedUpdate`, 30
+  a second by default, at most 5 a frame, the rest dropped). It owns
+  services, so the art's CPU-side pictures (`ArtStore`) are shared by every
+  board and outlive any one of them: a board made for the next screen is
+  ready in about 150 ms against about 950 cold.
+- **The page lifecycle** (`PageLifecycle`): hidden, frozen or put in the
+  back/forward cache, the engine requests no frames; back, it drops the gap
+  and every board draws itself again, asleep or not. A WebGL context that is
+  lost and not restored within a second (`CONTEXT_RESTORE_WAIT_MS`) is
+  replaced with a new canvas, and every atlas picture is repainted from how
+  it was painted.
+- **Scenes and a `Director`**: `defineScene({ name, init, load, create,
+  update, fixedUpdate, pause, resume, sleep, wake, shutdown })`. A scene's
+  context owns its boards, listeners, timers (`delay`, `every`, `wait`, on
+  engine time) and frame callbacks, and undoes them all when the scene ends.
+  `director.go(name, data, { fade, keep })` changes screen without the page
+  navigating; with `{ hash: true }` the back button works.
+- **`Simulation`**: the game as plain data, changed only by commands stamped
+  with the tick they apply at, with a saveable seeded `Rng`. Copies fed the
+  same commands agree to the bit (`hash()`). It also offers `snapshot`,
+  `restore` and `replay`, and runs on the engine's fixed steps or headless.
+- **Kept between visits**: rendered court portraits are stored in IndexedDB
+  (`PersistedArt`), so the next page load is ready in about half the time.
+
 ## Card sheets: the engine owns the pictures
 
 A `CardSprite` does not paint itself, hold atlas regions or wait for art. It
@@ -180,7 +214,10 @@ npm install
 npm run demo        # http://localhost:4390, and the LAN address
 ```
 
-Two basics - one stack, and the engine loading - then the same nine pages as phaser-card-engine's - stacks, card sizes, throwing,
+The index is one page: every demo is a scene, and moving between them never
+navigates (each still works on its own page too). There are three basics -
+one stack, the engine loading, and two seats playing one game through a fake
+network in lockstep - then the same nine pages as phaser-card-engine's - stacks, card sizes, throwing,
 hold'em, hands, the deck editor, the riffle, the tuck box, card faces - ported
 to felt. Some do more than before: thrown cards arc off the felt, cards dealt
 face up flip over in the air, and the riffled packets are the cards
@@ -189,7 +226,7 @@ themselves.
 ## Testing
 
 ```bash
-npm test            # typecheck (library, specs, demos) + 299 vitest specs in node
+npm test            # typecheck (library, specs, demos) + 320 vitest specs in node
 npm run smoke -- --host=http://localhost:4390   # real Chrome, real WebGL2 (SwiftShader)
 ```
 
@@ -206,9 +243,9 @@ over its deck, throws leaving the felt - and that a still board draws no frames.
 This is the reimplementation. What it was built to be good at, and does not do
 yet:
 
-- **Multiplayer.** A deterministic, serialisable table state separate from the
-  view, so a server (or a peer) can be authoritative and every client animates
-  the same moves - turn-based and realtime both.
+- **Multiplayer, over a real network.** `Simulation` is the deterministic
+  state and the lockstep protocol; a transport (WebSocket, WebRTC), joining
+  mid-game from a snapshot, and rollback for late commands are next.
 - **Lighting and materials** for the 3D cards: a light direction, a sheen on
   the stock, real cast shadows onto the felt rather than the card's own halo.
 - **A stress page** - a thousand cards in flight - to measure on real GPUs.

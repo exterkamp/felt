@@ -1,4 +1,4 @@
-# felt's runtime: what a game engine needs that felt does not have yet
+# felt's runtime: what a game engine needs, and how felt does it
 
 felt began as a renderer for cards: `createBoard()` makes a canvas, a WebGL2
 context, an atlas, a tween list and a requestAnimationFrame loop that sleeps
@@ -182,3 +182,18 @@ with the seeded RNG felt already has.
 4. **Fixed step, `ManualClock`, headless:** the base for multiplayer state.
 5. **Persisted raster cache,** so a cold page load paints from the last
    visit's courts instead of re-rendering them for a second.
+
+## Status (2026-11-05): built
+
+All five steps are in, each verified by unit specs and the CDP smoke test:
+
+| Step | Where | Verified by |
+| --- | --- | --- |
+| 1. Lifecycle and recovery | `src/runtime/lifecycle.ts`, `Board.lifecycle`/`rebuild` | Hidden pages draw nothing. Shown, thawed and back/forward-restored pages redraw unasked. A context lost and never restored gets a new canvas with every card |
+| 2. Engine and one loop | `src/runtime/engine.ts`, `clock.ts`, `ArtStore` | A board made again on the same engine is ready in about 155 ms against about 950 cold, with no art fetched again |
+| 3. Scenes and Director | `src/runtime/scene.ts`, `demo/app.ts` | All 12 demos open as scenes in one document. Leaving one leaves no canvas, board, timer or meter. Back and forward work |
+| 4. Fixed step, ManualClock, headless | `src/runtime/simulation.ts`, the Two seats demo | A server and two seats agree on every tick. An out-of-turn play is refused everywhere. Nothing is late at 400 ms |
+| 5. Persisted rasters | `src/art/persisted-art.ts` | The next load draws its 12 courts from IndexedDB and is ready in about 505 ms against about 1009 |
+
+`Page.setWebLifecycleState` hangs headless Chrome after a thaw (even a page
+with no board), so the smoke test dispatches the lifecycle events in the page.

@@ -9,8 +9,15 @@ WebGL2 card-game engine; the Phaser-free successor to `~/code/phaser-card-engine
 - Smoke (real Chrome via CDP + SwiftShader): `npm run smoke -- --host=$(devrun url felt-demo)`
 
 Layout: `src/core` is phaser-card-engine's pure half copied verbatim — change it
-there first if a fix should reach both. `src/gl` renderer/atlas/lens,
-`src/scene` board/nodes/tweens, `src/art` painters, `src/play` gestures.
+there first if a fix should reach both. `src/runtime` engine/clock/lifecycle/
+scenes/simulation, `src/gl` renderer/atlas/lens, `src/scene` board/nodes/tweens,
+`src/art` painters, `src/play` gestures.
+
+Rules (see docs/runtime.md): nothing in module state but constants and the one
+`engine()`. Page-wide things are engine services; per-context things are board
+services. Anything a scene starts goes through its context so it is undone
+when the scene ends. No raw `setTimeout` or `requestAnimationFrame` in demos.
+Every demo is a scene (`defineScene` + `standalone(scene)`).
 
 The projection is written twice — `src/gl/lens.ts` and `PROJECT` in
 `src/gl/shaders.ts` — and picking/`deckCentre` depend on them agreeing.
