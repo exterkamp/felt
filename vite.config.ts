@@ -63,6 +63,7 @@ export default defineConfig({
         faces: resolve(__dirname, 'demo/faces.html'),
         readouts: resolve(__dirname, 'demo/readouts.html'),
         pieces: resolve(__dirname, 'demo/pieces.html'),
+        lighting: resolve(__dirname, 'demo/lighting.html'),
       },
     },
   },
