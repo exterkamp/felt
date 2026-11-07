@@ -80,3 +80,11 @@ export type {
   Accepts, CanTake, DragOptions, FlickRelease, TableDealOptions, HandOptions, MoveCause, MoveOptions, PileOptions, SyncOptions,
   TableMove, TableOptions, TableTap, ZoneRules,
 } from './table/table.js';
+export { HIGHLIGHT_STYLES, Highlights, highlights } from './table/highlight.js';
+export type { Highlight, HighlightLook, HighlightOptions, HighlightStyle, HighlightTarget } from './table/highlight.js';
+export { SelectionSet, decideTap, hintMove, legalMoves, legalTargets } from './table/moves.js';
+export type {
+  Carded, HintOptions, LegalMove, LegalMovesOptions, RuleZone, SelectionChange, Tap, TapAction, TapRules,
+} from './table/moves.js';
+export { Selection, selectable } from './table/selection.js';
+export type { SelectableOptions, SelectionMove, ShowHintOptions } from './table/selection.js';

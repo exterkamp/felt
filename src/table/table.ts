@@ -103,7 +103,7 @@ export interface MoveOptions extends ThrowOptions {
   together?: boolean;
 }
 
-export type MoveCause = 'api' | 'deal' | 'drag' | 'flick' | 'sync';
+export type MoveCause = 'api' | 'deal' | 'drag' | 'flick' | 'sync' | 'tap';
 
 export interface TableMove {
   cards: readonly CardSprite[];
