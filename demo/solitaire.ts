@@ -1,6 +1,7 @@
 import './serve';
 import {
-  Card, SUITS, Zone, buildDeck, colorOf, createTable, defineScene, flipCard, rankValue, seeded, shuffle,
+  Card, SUITS, Zone, autosave, buildDeck, colorOf, createHistory, createSave, createTable, defineScene, flipCard,
+  rankValue, seeded, shuffle,
 } from 'felt';
 import { showCode } from './code';
 import { button, expose, label, slot, standalone } from './kit';
@@ -26,7 +27,9 @@ export const scene = defineScene({
     showCode(ctx);
     const board = ctx.board({ parent: 'board', width: W, height: H, backgroundColor: '#13463a' });
     const say = (text: string) => { ctx.$('#score').textContent = text; };
-    let moves = 0;
+    // The game's own state, besides where the cards are: kept with every
+    // undo step, and in the save.
+    let game = { seed: Date.now() % 100000, moves: 0, passes: 0 };
 
     // #region The zones, and the rules of Klondike
     const table = createTable(board);
@@ -58,15 +61,22 @@ export const scene = defineScene({
 
     // #region Playing: drags, taps, and turning up what a move uncovers
     table.draggable();
+    const home = () => foundations.reduce((n, f) => n + f.size, 0);
+    const score = () => {
+      if (!game.moves) say('Drag cards to build down in alternating colours, and up by suit on the foundations.');
+      else say(home() === 52 ? `Solved in ${game.moves} moves.`
+        : `${game.moves} moves · ${home()} of 52 home${game.passes ? ` · ${game.passes} times through` : ''}.`);
+    };
     // A column whose last face-up card has gone turns up the one under it.
+    // Moves by 'sync' are an undo putting the table back: not play.
     table.on('move', ({ from, to, by }) => {
-      if (by === 'deal') return;
+      if (by === 'deal' || by === 'sync') return;
       if (from?.id.startsWith('column') && from.top && !from.top.card.faceUp) {
         void flipCard(board, from.top, { faceUp: true, lift: 10 });
       }
-      if (to !== stock) moves++;
-      const home = foundations.reduce((n, f) => n + f.size, 0);
-      say(home === 52 ? `Solved in ${moves} moves.` : `${moves} moves · ${home} of 52 home.`);
+      if (from === waste && to === stock) game.passes++;
+      if (to !== stock) game.moves++;
+      score();
     });
     table.on('tap', ({ card, zone }) => {
       // The stock: turn one onto the waste - or, once it is empty, the waste back over.
@@ -77,8 +87,30 @@ export const scene = defineScene({
       }
       // A card on top of anything: up to its foundation, if it may go.
       if (!card || !zone || card !== zone.top || !card.card.faceUp) return;
-      const home = foundations.find((f) => f.accepts([card.card], zone));
-      if (home) void table.move(card, home, { spins: 0, arc: 14 });
+      const to = foundations.find((f) => f.accepts([card.card], zone));
+      if (to) void table.move(card, to, { spins: 0, arc: 14 });
+    });
+    // #endregion
+
+    // #region Undo and redo: one step per drop or tap, the score and passes with it
+    // Each drop, tap or recycle is one step - the card it turns up included,
+    // since that flip starts in the same move handler. The game's state rides
+    // along, so an undo puts the move count and the passes back too.
+    const history = createHistory(table, {
+      game: { save: () => game, load: (saved) => { game = saved; score(); } },
+    });
+    ctx.scope.add(() => history.destroy());
+    const undo = button(ctx, 'undo', () => void history.undo()) as HTMLButtonElement;
+    const redo = button(ctx, 'redo', () => void history.redo()) as HTMLButtonElement;
+    const buttons = () => { undo.disabled = !history.canUndo; redo.disabled = !history.canRedo; };
+    ctx.scope.add(history.on('change', buttons));
+    ctx.listen(window, 'keydown', (event) => {
+      const key = event as KeyboardEvent;
+      const letter = key.key.toLowerCase();
+      if (!(key.ctrlKey || key.metaKey) || (letter !== 'z' && letter !== 'y')) return;
+      key.preventDefault();
+      if (key.shiftKey || letter === 'y') void history.redo();
+      else void history.undo();
     });
     // #endregion
 
@@ -96,15 +128,38 @@ export const scene = defineScene({
       }
       await Promise.all(landed);
       await Promise.all(columns.map((c: Zone) => flipCard(board, c.top!, { faceUp: true, lift: 10 })));
-      moves = 0;
-      say('Drag cards to build down in alternating colours, and up by suit on the foundations.');
     }
     // #endregion
 
-    let seed = Date.now() % 100000;
-    button(ctx, 'new', () => void table.run(() => deal(++seed)));
-    void table.run(() => deal(seed));
-    expose({ board, table, stock, waste, foundations, columns, deal: (s: number) => table.run(() => deal(s)) });
+    // #region Saving, and resuming where it was left
+    // Saved after every step and whenever the page is hidden, frozen or left -
+    // and when the scene ends, since the scene's scope runs the disposer. On
+    // the way in, a save is put back at once: no deal, nothing drawn first.
+    const save = createSave<typeof game>({ id: 'felt-solitaire', version: 1 });
+    function newGame(seed: number): Promise<void> {
+      save.clear();
+      return table.run(async () => {
+        // The deal is not a step: begun as a group (nothing is saved half
+        // way through it), then made the start of the game's history.
+        history.begin('deal');
+        try {
+          await deal(seed);
+        } finally {
+          game = { seed, moves: 0, passes: 0 };
+          history.reset();
+          score();
+          buttons();
+        }
+      }).then(() => undefined);
+    }
+    const resumed = save.resume(history);
+    if (!resumed.ok) void newGame(game.seed);
+    buttons();
+    ctx.scope.add(autosave(history, save, { lifecycle: ctx.engine }));
+    button(ctx, 'new', () => void newGame(game.seed + 1));
+    // #endregion
+
+    expose({ board, table, stock, waste, foundations, columns, history, save, resumed, deal: newGame });
   },
 });
 

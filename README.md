@@ -211,6 +211,64 @@ h.remove();
 
 See the Tap to move demo.
 
+## Undo, history and saves
+
+A table's whole arrangement is plain JSON: `captureTable(table)` reads each
+zone's card ids in order, which cards are face up, and the cards loose on
+the felt with where they lie. `restoreTable(table, state)` puts it back:
+cards fly to their places and turn to their sides (or, with
+`{ instant: true }`, are simply there). It is the *logical* arrangement, so
+it can be read mid-flight: a card thrown at a pile is in it, and a card
+turning over counts as the side it is turning to.
+
+```ts
+const history = createHistory(table, {
+  game: { save: () => game, load: (saved) => { game = saved; render(); } },   // score, passes, turn: JSON
+  cap: 200,
+});
+button('undo', () => history.undo());          // animated; resolves once landed
+history.on('change', ({ canUndo, canRedo }) => { /* grey the buttons */ });
+await history.group(() => playAiTurn(), 'turn'); // several awaited moves, one undo step
+history.reset();                                 // after a deal: this is the start
+history.log();                                   // [{ cards, from, to, by }, ...] for a replay
+```
+
+- **Steps**: every move the table makes in one go - one drop, one tap, and
+  whatever the game's `move` handler does in answer (the card a move turns
+  up, the score) - is one step, recorded a microtask later. A sequence that
+  awaits between moves is one step with `group(fn)` or `begin()`/`end()`.
+  `commit()` records a change the table did not announce (a card turned in
+  place, a game-state change). A step that changes nothing is not kept.
+- **Undo and redo** restore whole snapshots, table and game, so they cannot
+  drift. A new step after an undo discards the redo branch; past `cap` steps
+  the oldest go. The history's own restores move cards `by: 'sync'` and are
+  never recorded; a game's `move` handler should ignore `sync` too.
+- **In flight**: undo works while cards are still in the air (the step is
+  already recorded; they turn round and go back). It answers false while
+  cards are in the player's hand, or while a group is open.
+
+A save is that history in an envelope: `{ format: SAVE_FORMAT, game, version,
+savedAt, history }`.
+
+```ts
+const save = createSave({ id: 'klondike', version: 1 });   // localStorage; `store` to plug in another
+const resumed = save.resume(history);       // instant, before anything is drawn
+if (!resumed.ok) newGame();                 // 'none' | 'corrupt' | 'old-version' | 'unfit' | ...
+ctx.scope.add(autosave(history, save, { lifecycle: ctx.engine }));
+```
+
+`autosave` writes after every step, undo and redo, when the page is hidden,
+frozen or left (the engine's `suspend`), and once more when disposed - given
+to the scene's scope, leaving the scene saves it. Nothing is written while a
+group is open, so a page closed mid-deal comes back to a new deal rather
+than half of one. `resume` puts the table back at once, with no deal and no
+flights, so the first frame drawn is the saved game. A save that will not
+do (unparseable, another game's, another state `version` with no `migrate`,
+a newer `format`, or zones and cards this table does not have) is reported
+and cleared, never thrown. The Solitaire demo has Undo, Redo (and ctrl+z /
+ctrl+shift+z), keeps its move count and passes through the stock with every
+step, and comes back after a reload where it was left.
+
 ## Painting the felt
 
 The markings on a table - the words round a blackjack layout, a craps
@@ -421,6 +479,9 @@ yet:
   mid-game from a snapshot, and rollback for late commands are next.
 - **Lighting and materials** for the 3D cards: a light direction, a sheen on
   the stock, real cast shadows onto the felt rather than the card's own halo.
+- **Replays and hints** from the history: `history.log()` is already the
+  move list, and `restoreTable` can step a table through it; a replay player
+  and a solver's "show me" are not written yet.
 - **A stress page** - a thousand cards in flight - to measure on real GPUs.
 
 ## Licence

@@ -54,6 +54,7 @@
       label { font-size: 0.72rem; display: flex; align-items: center; gap: 0.35rem; color: #9fc4a4; }
       input[type=range] { width: 7rem; accent-color: #ffd166; }
       label code { font-size: 0.68rem; color: #cfead0; font-family: ui-monospace, monospace; min-width: 2.2rem; }
+      button:disabled { opacity: 0.4; cursor: default; }
       #score { font-family: ui-monospace, monospace; font-size: 0.72rem; color: #cfead0; text-align: center; }
     </style>
   </head>
@@ -65,11 +66,15 @@
       zones, each with its rule (<code>accepts</code>, <code>drag</code>,
       <code>canTake</code>), and the table does the rest - the drag, the
       outline, sending back what may not go, carrying a run. Tap the stock
-      to turn a card; tap a card to send it up to its foundation.
+      to turn a card; tap a card to send it up to its foundation. Every move
+      can be undone, and the game is saved as you play: reload and it is
+      where you left it.
     </p>
     <div id="board"></div>
     <p id="score">Drag cards to build down in alternating colours, and up by suit on the foundations.</p>
     <div class="row">
+      <button id="undo" title="Undo (ctrl+z)">Undo</button>
+      <button id="redo" title="Redo (ctrl+shift+z)">Redo</button>
       <button id="new">New game</button>
     </div>
     <script type="module" src="./solitaire.ts"></script>

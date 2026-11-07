@@ -88,3 +88,13 @@ export type {
 } from './table/moves.js';
 export { Selection, selectable } from './table/selection.js';
 export type { SelectableOptions, SelectionMove, ShowHintOptions } from './table/selection.js';
+export {
+  captureTable, cloneState, diffStates, isTableState, restoreTable, sameState, stateFits, tableFits,
+} from './table/state.js';
+export type { LooseCard, RestoreOptions, StateDiff, TableState } from './table/state.js';
+export { History, createHistory, isSavedHistory } from './table/history.js';
+export type {
+  GameState, HistoryChange, HistoryOptions, HistoryStep, MoveRecord, SavedHistory,
+} from './table/history.js';
+export { GameSave, SAVE_FORMAT, autosave, createSave, decodeSave, encodeSave, memoryStore } from './table/save.js';
+export type { AutosaveOptions, GameSaveOptions, SaveProblem, SaveRead, SaveStore, SavedGame } from './table/save.js';
