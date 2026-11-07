@@ -60,6 +60,7 @@ export default defineConfig({
         deck: resolve(__dirname, 'demo/deck.html'),
         shuffle: resolve(__dirname, 'demo/shuffle.html'),
         faces: resolve(__dirname, 'demo/faces.html'),
+        lighting: resolve(__dirname, 'demo/lighting.html'),
       },
     },
   },

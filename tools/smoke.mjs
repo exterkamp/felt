@@ -101,7 +101,7 @@ console.log(`smoking ${host}`);
 await send('Page.navigate', { url: `${host}/` });
 await sleep(700);
 const tiles = JSON.parse(await evaluate(`JSON.stringify([...document.querySelectorAll('a.demo')].map(a => a.href))`));
-check(tiles.length === 17, `the home screen lists seventeen demos (${tiles.length})`);
+check(tiles.length === 18, `the home screen lists eighteen demos (${tiles.length})`);
 let reachable = 0;
 let wayBack = 0;
 let boards = 0;
@@ -568,6 +568,61 @@ const thrown = JSON.parse(await evaluate(`(async () => {
 check(thrown.rose > 20, `a thrown card leaves the felt on the way (${thrown.rose.toFixed(1)} units up)`);
 check(thrown.count === 2 && thrown.down, 'and comes down onto the pile it was thrown at');
 check(thrown.angled, 'a messy pile takes it at its own crooked angle');
+
+// --- lighting: a light on the board changes what is drawn -------------------
+console.log('\nlighting');
+await open('lighting.html', '!!window.__felt?.held');
+const lightRun = JSON.parse(await evaluate(`(async () => {
+  const f = __felt; const b = f.board; const L = f.light; const h = f.held;
+  const wait = (ms) => new Promise(r => setTimeout(r, ms));
+  f.stopRocking();
+  await wait(200);
+  // Mean brightness of a square of the board, in board units.
+  const lum = (x, y, r) => { const c = b.snapshotCanvas(); const s = c.width / b.width;
+    const px = c.getContext('2d').getImageData(Math.round((x - r) * s), Math.round((y - r) * s),
+      Math.round(2 * r * s), Math.round(2 * r * s)).data;
+    let t = 0; for (let i = 0; i < px.length; i += 4) t += 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
+    return t / (px.length / 4); };
+  const plain = { name: 'plain', specular: 0, shininess: 1, metallic: 0, sheen: 0, grain: 0, grainScale: 1, foil: 0 };
+  // Its back, which is the same all over: only the light changes it.
+  h.setFaceUp(false); h.angle = 0; h.turn = 0; h.z = 40;
+  L.set({ azimuth: 0, elevation: 35, ambient: 0.3, material: f.stocks.matte });
+  const tipped = async () => { const out = {}; for (const tilt of [0.6, -0.6]) { h.tilt = tilt; await wait(30);
+    out[tilt > 0 ? 'towards' : 'away'] = lum(h.x, h.y, 8); } return out; };
+  const lit = await tipped();
+  const calls = b.renderer.drawCalls;
+  L.off(); const unlit = await tipped(); L.set();
+  // Flat on the felt, under a light with no highlight: as painted.
+  h.tilt = 0; h.z = 0; h.setFaceUp(true); L.material = plain; L.off(); await wait(30);
+  const flatOff = lum(h.x - 14, h.y + 26, 5);
+  L.set(); await wait(30);
+  const flatOn = lum(h.x - 14, h.y + 26, 5);
+  // Up in the air, lit from the right and then from the left: the shadow is
+  // on the far side from the light each time, and further off than the halo.
+  h.z = 80; L.material = f.stocks.matte;
+  const sides = {};
+  for (const az of [90, -90]) { L.set({ azimuth: az, elevation: 45 }); await wait(30);
+    sides[az] = { left: lum(h.x - 82, h.y, 10), right: lum(h.x + 82, h.y, 10) }; }
+  // Through a lost context: the light is uniforms, set every frame.
+  const gl = b.renderer.gl; const ext = gl.getExtension('WEBGL_lose_context');
+  ext.loseContext(); await wait(300); ext.restoreContext(); await wait(1500);
+  h.z = 40; h.setFaceUp(false); L.set({ azimuth: 0, elevation: 35, material: f.stocks.matte });
+  const restored = await tipped();
+  h.setFaceUp(true); h.tilt = 0.35; h.z = 60; L.set({ azimuth: -35, elevation: 50, ambient: 0.45, material: f.stocks.linen });
+  return JSON.stringify({ lit, unlit, calls, flatOff, flatOn, sides, restored, lost: gl.isContextLost() });
+})()`));
+const r1 = (v) => v.toFixed(1);
+check(lightRun.lit.towards > lightRun.lit.away * 1.3,
+  `lit, a card tipped towards the light is brighter than one tipped away (${r1(lightRun.lit.towards)} / ${r1(lightRun.lit.away)})`);
+check(Math.abs(lightRun.unlit.towards - lightRun.unlit.away) < Math.abs(lightRun.lit.towards - lightRun.lit.away) * 0.25,
+  `unlit, the same two tips are nearly the same (${r1(lightRun.unlit.towards)} / ${r1(lightRun.unlit.away)})`);
+check(Math.abs(lightRun.flatOn - lightRun.flatOff) < 2,
+  `a card lying flat under a light is drawn as painted (${r1(lightRun.flatOn)} lit, ${r1(lightRun.flatOff)} unlit)`);
+check(lightRun.sides[90].left < lightRun.sides[90].right - 4 && lightRun.sides[-90].right < lightRun.sides[-90].left - 4,
+  `a card in the air casts its shadow away from the light (from the right: ${r1(lightRun.sides[90].left)} left / ${r1(lightRun.sides[90].right)} right)`);
+check(lightRun.calls === 1, `lit, it is still one draw call (${lightRun.calls})`);
+check(!lightRun.lost && lightRun.restored.towards > lightRun.restored.away * 1.3,
+  `the light survives a lost WebGL context (${r1(lightRun.restored.towards)} / ${r1(lightRun.restored.away)})`);
 
 console.log('');
 // --- flicking: let go while moving and it keeps going ----------------------
