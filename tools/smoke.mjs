@@ -576,6 +576,8 @@ const lightRun = JSON.parse(await evaluate(`(async () => {
   const f = __felt; const b = f.board; const L = f.light; const h = f.held;
   const wait = (ms) => new Promise(r => setTimeout(r, ms));
   f.stopRocking();
+  // Its art finished: a board that waits for art draws no card till then.
+  for (let i = 0; i < 120 && !(h.revealed && f.row.every(c => c.revealed)); i++) await wait(250);
   await wait(200);
   // Mean brightness of a square of the board, in board units.
   const lum = (x, y, r) => { const c = b.snapshotCanvas(); const s = c.width / b.width;

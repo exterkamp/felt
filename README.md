@@ -139,8 +139,9 @@ const pearl = defineMaterial({ name: 'pearl', specular: 0.7, shininess: 300, she
 ```
 
 **Off by default, and off is the old picture to the pixel.** An unlit board
-takes the same path through the shader it always did; the pages that were
-there before compare byte for byte against the commit before lighting. A
+takes the same path through the shader it always did: the stacks, sizes,
+tables and riffle pages snapshot byte for byte the same as the commit
+before lighting. A
 board opts in with `light`, and that choice was deliberate: the felt's
 existing demos, its smoke test and every game built on it were tuned against
 the unlit look, and a light is a style - a game should pick it.
@@ -181,8 +182,12 @@ the way the lens is: `lightDirection`, `diffuseShade`, `specularAt`,
 `shadowOffset`, `projectOntoTable` and `shadowSpread` are what the specs
 test, and what a game can ask without a GPU. The light is uniforms set
 every frame, so a lost context needs nothing done for it. It costs one
-float per card, no extra draw calls, and nothing measurable in `frameWork`
-(see the stress page). The Lighting demo has a card in each material
+float per card (its material slot, in the instance's last spare float) and
+no extra draw calls; writing the instances for the stress page's 4160 cards,
+all in the air, measured the same lit as unlit. On the GPU an unlit board
+skips all of it on a uniform branch; a lit one pays a few dozen ALU ops per
+card pixel, and a parallelogram distance per pixel of a shadow cast from
+the air. The Lighting demo has a card in each material
 rocking under a lamp you can move, a card held up by sliders, and a deck to
 toss and pick up from.
 
