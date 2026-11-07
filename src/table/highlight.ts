@@ -307,8 +307,7 @@ export class Highlights {
         p.fillStyle = '#fff';
         p.beginPath();
         p.roundRect(spread - 1, spread - 1, width + 2, height + 2, radius + 1);
-        p.fill();
-        p.fill();
+        for (let i = 0; i < 3; i++) p.fill();
         p.restore();
         p.globalCompositeOperation = 'destination-out';
         p.beginPath();

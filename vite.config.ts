@@ -52,6 +52,7 @@ export default defineConfig({
         tables: resolve(__dirname, 'demo/tables.html'),
         tour: resolve(__dirname, 'demo/tour.html'),
         solitaire: resolve(__dirname, 'demo/solitaire.html'),
+        select: resolve(__dirname, 'demo/select.html'),
         stacks: resolve(__dirname, 'demo/stacks.html'),
         sizes: resolve(__dirname, 'demo/sizes.html'),
         throws: resolve(__dirname, 'demo/throws.html'),

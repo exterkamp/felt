@@ -168,6 +168,49 @@ await table.move(stock.top!, column);     // thrown there, turned to the zone's 
 See the Solitaire demo (Klondike as thirteen zones and their rules),
 Two seats (one `sync` per view), and section 9 of the tour.
 
+## Selecting, tapping to move, and highlights
+
+Dragging is not the only way to play a table: on a phone held in one hand,
+and for anyone who can't drag, a card is *tapped* and then its destination
+is. `selectable(table)` does that by the same zone rules a drop asks.
+
+```ts
+table.draggable();                                   // still works alongside
+const selection = selectable(table, { dragTargets: true });
+selection.on('change', ({ items }) => { /* what is selected */ });
+selection.on('refuse', ({ to }) => say(`not on ${to.id}`));
+button('hint', () => selection.hint({ score: (m) => (m.to.kind === 'pile' ? 1 : 0) }));
+
+const lights = highlights(board);                    // the board's highlights
+lights.define('mine', { color: '#ff7de9', shape: 'both', pulse: 800 });
+const h = lights.card(card, 'mine');                 // follows the card wherever it goes
+lights.zone(pile, 'target');                         // its top card, or its empty place
+void lights.flash(pile, 'refused');                  // a brief red "no"
+h.remove();
+```
+
+- **Selection**: a tap selects what a drag would pick up (`drag`/`canTake`:
+  the card, or its run), lifts it on its own Animator channel and lights it;
+  the zones that `accepts` it light up as targets; a tap on one moves it
+  there (`by: 'tap'`); a tap on one that refuses it flashes red. Any move of
+  a selected card clears it. `multi: true` adds and removes cards instead.
+  `selection.tap({ card })` / `tap({ zone })` drive it without a pointer -
+  for a keyboard or a screen reader.
+- **Highlights** (`highlights(board)`, a board service): `selected`,
+  `target`, `hint` (pulsing) and `refused` (flashed) built in, `define` for
+  a game's own. Each is a sprite painted once in white per card size and
+  shape and tinted, so a whole table of them shares one or two atlas
+  pictures. Before every frame each is put on its card's *shown* pose -
+  throws, flips, the pick-up's lift, swivel and extra perspective included -
+  and half a step of depth under it, so its own card covers its middle and
+  whatever lies over the card lies over its glow too.
+- **The pure half** (`src/table/moves.ts`, all exported from `felt`): `legalTargets`,
+  `legalMoves`, `hintMove`, the tap-to-move state machine `decideTap`, and
+  `SelectionSet` - generic over anything shaped like a zone, so a game's
+  rules can be tested in node.
+
+See the Tap to move demo.
+
 ## Painting the felt
 
 The markings on a table - the words round a blackjack layout, a craps

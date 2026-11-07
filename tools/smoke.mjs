@@ -101,7 +101,7 @@ console.log(`smoking ${host}`);
 await send('Page.navigate', { url: `${host}/` });
 await sleep(700);
 const tiles = JSON.parse(await evaluate(`JSON.stringify([...document.querySelectorAll('a.demo')].map(a => a.href))`));
-check(tiles.length === 17, `the home screen lists seventeen demos (${tiles.length})`);
+check(tiles.length === 18, `the home screen lists eighteen demos (${tiles.length})`);
 let reachable = 0;
 let wayBack = 0;
 let boards = 0;
@@ -851,6 +851,100 @@ check(!sol.suits.aceOnSpades && sol.suits.aceOnHearts && sol.suits.spadeAce && !
   'each foundation takes only its own suit, from the ace up');
 check(sol.run.onKing === 'clubs-K,hearts-Q,spades-J' && sol.run.left === 'diamonds-9+',
   `a run picked up by its first card moves together, and uncovers the card under it (${sol.run.onKing} / ${sol.run.left})`);
+
+// --- tap to move: selection, legal targets, refusals, highlights that follow --
+console.log('\ntap to move');
+await open('select.html', '__felt?.columns?.length === 6 && !__felt.table.busy');
+const sel = JSON.parse(await evaluate(`(async () => {
+  const f = __felt; const b = f.board; const wait = (ms) => new Promise(r => setTimeout(r, ms));
+  while (f.table.busy) await wait(100);
+  const rect = b.canvas.getBoundingClientRect();
+  const page = (x, y) => ({ clientX: rect.left + x / b.width * rect.width, clientY: rect.top + y / b.height * rect.height });
+  const tap = async (x, y, ms = 450) => { const at = page(x, y);
+    b.canvas.dispatchEvent(new PointerEvent('pointerdown', { ...at, pointerId: 16, bubbles: true }));
+    b.canvas.dispatchEvent(new PointerEvent('pointerup', { ...at, pointerId: 16, bubbles: true })); await wait(ms); };
+  const tapCard = (card) => tap(card.x, card.y + 24);
+  const tapZone = (zone, ms) => { const p = zone.next(); return tap(p.x, p.y, ms); };
+  // Real pixels: the mean colour of a band just outside a card's left and
+  // right edges - felt, unless something is lit round it.
+  const { width: cw, height: ch } = f.table.cardSize();
+  const ring = (x, y) => {
+    const shot = b.snapshotCanvas(); const pen = shot.getContext('2d'); const k = shot.width / b.width;
+    let r = 0, g = 0, bl = 0, n = 0;
+    for (const side of [-1, 1]) for (let dy = 0; dy <= ch / 2 - 6; dy += 4) {
+      const px = pen.getImageData(Math.round((x + side * (cw / 2 + 2)) * k), Math.round((y + dy) * k), 1, 1).data;
+      r += px[0]; g += px[1]; bl += px[2]; n++;
+    }
+    return { r: r / n, g: g / n, b: bl / n };
+  };
+  const atZone = (zone) => { const t = zone.top; return t ? ring(t.x, t.y) : ring(zone.next().x, zone.next().y); };
+  const [c0, c1, c2, c3, c4, c5] = f.columns;
+  const setup = { 'column-0': ['spades-7', 'hearts-6'], 'column-1': ['clubs-7'], 'column-2': ['diamonds-5'],
+    'column-3': ['spades-2'], 'column-4': [], 'column-5': ['hearts-3'] };
+  const named = new Set(Object.values(setup).flat());
+  const state = Object.fromEntries([f.deck, ...f.foundations, ...f.columns].map(z => [z.id, []]));
+  f.selection().clear();
+  await f.table.sync({ ...state, ...setup, deck: f.table.cards.map(c => c.card.id).filter(id => !named.has(id)) }, { instant: true });
+  for (const id of named) f.table.card(id).setFaceUp(true);
+  await wait(400);
+  const felt = atZone(c2);
+  // Each place as it looks unlit - an empty one shows its painted outline.
+  const unlit = Object.fromEntries([c1, c2, c3, c4, c5, f.foundations[1]].map(z => [z.id, atZone(z)]));
+  // Tap the six of hearts: selected, lifted and lit gold; the black seven and
+  // the empty column lit as targets, and nothing else.
+  const six = f.table.card('hearts-6');
+  const before = ring(six.x, six.y);
+  await tapCard(six);
+  const selected = { ids: f.selection().cards.map(c => c.card.id), before, after: ring(six.x, six.y), z: six.shown.z };
+  const lit = Object.fromEntries([c1, c2, c3, c4, c5, f.foundations[1]].map(z => [z.id, atZone(z)]));
+  const targets = f.selection().targets().map(z => z.id);
+  // Tap the seven of clubs: the six goes onto it.
+  await tapCard(f.table.card('clubs-7')); await wait(500);
+  const moved = { onto: c1.cards.map(c => c.card.id).join(), left: c0.cards.map(c => c.card.id).join(), selected: f.selection().cards.length,
+    at: { dx: six.x - c1.places(2)[1].x, dy: six.y - c1.places(2)[1].y }, gold: ring(six.x, six.y) };
+  // The two of spades onto the hearts' foundation: refused, flashed red, still selected.
+  await tapCard(f.table.card('spades-2'));
+  const home = f.foundations[1];
+  await tapZone(home, 90);
+  const refused = { flash: atZone(home), selected: f.selection().cards.map(c => c.card.id), size: home.size };
+  await wait(700);
+  refused.after = atZone(home);
+  await tap(240, 690);
+  // A highlight on a card goes where the card goes - read off mid-flight, then by pixels where it lands.
+  const three = f.table.card('hearts-3');
+  f.highlights.card(three, { color: 0xff7de9, shape: 'both' }, { group: 'smoke' });
+  await wait(250);
+  const was = { x: three.x, y: three.y, ring: ring(three.x, three.y) };
+  const flight = f.table.move(three, c4, { duration: 600 });
+  await wait(250);
+  const sprites = b.nodes().filter(n => !n.interactive && n.depth === three.depth - 0.5);
+  const p = three.shown;
+  const mid = { n: sprites.length, off: Math.max(...sprites.map(s => Math.hypot(s.x - p.x, s.y - p.y) + Math.abs(s.z - p.z) + Math.abs(s.angle - p.angle))),
+    along: Math.hypot(p.x - was.x, p.y - was.y), left: Math.hypot(p.x - c4.next().x, p.y - c4.next().y) };
+  await flight; await wait(300);
+  const landed = { ring: ring(three.x, three.y), old: ring(was.x, was.y), moved: Math.hypot(three.x - was.x, three.y - was.y) };
+  f.highlights.clear('smoke');
+  return JSON.stringify({ felt, unlit, selected, lit, targets, moved, refused, was, mid, landed });
+})()`));
+const blue = (c) => c.b - sel.felt.b;
+const lift = (id) => sel.lit[id].b - sel.unlit[id].b;
+const goldOf = (c) => c.r - sel.felt.r;
+check(sel.selected.ids.join() === 'hearts-6' && goldOf(sel.selected.after) > 40 && goldOf(sel.selected.before) < 10 && sel.selected.z > 5,
+  `a tapped card is selected, lifted and lit: red over the felt ${goldOf(sel.selected.before).toFixed(0)} → ${goldOf(sel.selected.after).toFixed(0)}`);
+check(sel.targets.join() === 'column-1,column-4' && lift('column-1') > 40 && lift('column-4') > 40,
+  `its legal targets light up (${sel.targets.join(', ')}: blue +${lift('column-1').toFixed(0)}, +${lift('column-4').toFixed(0)})`);
+check(['column-2', 'column-3', 'column-5', 'foundation-hearts'].every(id => Math.abs(lift(id)) < 6),
+  `and the places it may not go stay dark (${['column-2', 'column-3', 'column-5', 'foundation-hearts'].map(id => lift(id).toFixed(0)).join(', ')})`);
+check(sel.moved.onto === 'clubs-7,hearts-6' && sel.moved.left === 'spades-7' && sel.moved.selected === 0
+  && Math.hypot(sel.moved.at.dx, sel.moved.at.dy) < 0.5 && goldOf(sel.moved.gold) < 10,
+  `a tap on a target moves it there, and lets go of the selection (${sel.moved.onto})`);
+check(sel.refused.size === 0 && sel.refused.selected.join() === 'spades-2' && sel.refused.flash.r - sel.felt.r > 40
+  && sel.refused.after.r - sel.felt.r < 8,
+  `a tap where it may not go is refused: flashed red (+${(sel.refused.flash.r - sel.felt.r).toFixed(0)}) and gone again, still selected`);
+check(sel.mid.n === 2 && sel.mid.off < 0.01 && sel.mid.along > 5 && sel.mid.left > 5,
+  `a highlight rides its card in flight: ${sel.mid.n} sprites at its shown pose, half way (off by ${sel.mid.off.toFixed(3)})`);
+check(sel.landed.moved > 50 && sel.landed.ring.b - sel.felt.b > 40 && Math.abs(sel.landed.old.b - sel.unlit['column-4'].b) < 6 && sel.was.ring.b - sel.felt.b > 40,
+  `and lights it where it lands, not where it was (+${(sel.landed.ring.b - sel.felt.b).toFixed(0)} there, ${(sel.landed.old.b - sel.unlit['column-4'].b).toFixed(0)} here)`);
 
 // --- two seats: one game, three copies, in lockstep -------------------------
 console.log('\ntwo seats');

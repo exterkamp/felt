@@ -67,7 +67,7 @@ describe('legalTargets', () => {
 
   it('is nothing for nothing', () => {
     const a = column('a');
-    expect(legalTargets([], undefined, [a])).toEqual([]);
+    expect(legalTargets<Held, FakeZone>([], undefined, [a])).toEqual([]);
   });
 });
 
