@@ -134,11 +134,19 @@ export class FaceSheet {
   }
 
   /**
-   * Whether a card showing this face can be drawn: the whole sheet finished,
-   * for a sheet that warms the deck; else that one face.
+   * Whether a card showing this face can be drawn from this sheet: the whole
+   * sheet finished, for a sheet that warms the deck - so a deck dealt shows
+   * all at once - else that one face.
    */
   readyFor(suit: string, rank: string): boolean {
-    if (this.wholeDeck) return this.ready();
+    return this.wholeDeck ? this.ready() : this.finished(suit, rank);
+  }
+
+  /**
+   * Whether this one face is painted and finished, whatever the rest of the
+   * sheet is doing - what a card at another size can be shown from.
+   */
+  finished(suit: string, rank: string): boolean {
     const region = this.cells.get(`${suit}|${rank}`);
     return region !== undefined && CardArt.of(this.board).finished(region);
   }
@@ -500,12 +508,26 @@ export class CardSheets {
   standIn(faces: FaceSheet, backs: BackSheet, suit: string, rank: string):
     { faces: FaceSheet; backs: BackSheet } | undefined {
     const f = faces.readyFor(suit, rank) ? faces
-      : this.nearest(this.faces.values(), faces, (sheet) => (sheet as FaceSheet).readyFor(suit, rank));
+      // Any other size with this face finished will do, a sheet left half
+      // painted by a drag included: on a slow machine none may be whole yet.
+      : this.nearest(this.faces.values(), faces, (sheet) => (sheet as FaceSheet).finished(suit, rank))
+        // Or its own face, done on a sheet not yet whole - once the look is
+        // at more than one size, which is a resize. A deck's first deal still
+        // waits for the whole deck, and shows all at once.
+        ?? (faces.finished(suit, rank) && this.sizesOf(faces) > 1 ? faces : undefined);
     const b = backs.ready() ? backs : this.nearest(this.backs.values(), backs, (sheet) => sheet.ready());
     if (!f || !b) return undefined;
     if (f.users++ === 0) this.idleFaces.delete(f);
     if (b.users++ === 0) this.idleBacks.delete(b);
     return { faces: f, backs: b };
+  }
+
+  /** How many sizes of this sheet's look there are. */
+  private sizesOf(sheet: FaceSheet): number {
+    const family = this.families.get(sheet)?.family;
+    let n = 0;
+    for (const other of this.faces.values()) if (this.families.get(other)?.family === family) n++;
+    return n;
   }
 
   private nearest<T extends FaceSheet | BackSheet>(all: Iterable<T>, want: T, usable: (sheet: T) => boolean): T | undefined {
@@ -530,14 +552,25 @@ export class CardSheets {
     };
   }
 
-  /** Drops every unused sheet but the newest finished one of each family. Answers whether any went. */
+  /**
+   * Drops every unused sheet but the newest finished one of each family -
+   * what a card being resized is shown from while its own size is painted.
+   * A family with no size finished at all keeps its newest with any faces
+   * done: on a slow machine a drag can start before any size is whole.
+   * Answers whether any went.
+   */
   private relieve(): boolean {
     let dropped = false;
     const drop = <T extends FaceSheet | BackSheet>(idle: Set<T>, all: Map<string, T>) => {
+      const newest = [...idle].reverse();
+      // Any finished size will stand in, one in use as well as an idle one.
+      const whole = new Set([...all.values()].filter((sheet) => sheet.ready()).map((sheet) => this.families.get(sheet)?.family));
       const kept = new Set<string>();
-      for (const sheet of [...idle].reverse()) {
+      for (const sheet of newest) {
         const family = this.families.get(sheet)?.family;
-        if (family && sheet.ready() && !kept.has(family)) {
+        const keep = sheet.ready()
+          || (!whole.has(family) && sheet instanceof FaceSheet && sheet.progress().done > 0);
+        if (family && keep && !kept.has(family)) {
           kept.add(family);
           continue;
         }
@@ -558,9 +591,15 @@ export class CardSheets {
   trim(keepFaces: number, keepBacks: number): boolean {
     let dropped = false;
     while (this.idleFaces.size > keepFaces) {
-      // An unfinished sheet nobody is using goes before a finished one: the
-      // finished ones are what a resized card is shown from meanwhile.
-      const sheet = [...this.idleFaces].find((f) => !f.ready()) ?? this.idleFaces.values().next().value!;
+      // The sheet with the fewest finished faces goes first, the oldest of
+      // those: finished faces - even a few, on a sheet a drag left behind
+      // half done - are what a resized card is shown from meanwhile.
+      let sheet = this.idleFaces.values().next().value!;
+      let least = Infinity;
+      for (const f of this.idleFaces) {
+        const done = f.progress().done;
+        if (done < least) { least = done; sheet = f; }
+      }
       this.idleFaces.delete(sheet);
       this.faces.delete(sheet.key);
       this.families.delete(sheet);
