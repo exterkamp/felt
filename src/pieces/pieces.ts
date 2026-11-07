@@ -92,6 +92,8 @@ export class Pieces implements StackHost {
   /** Chips in the air, and which flight each is on: a chip sent on again is still in the air. */
   private readonly moving = new Map<Chip, number>();
   private dragOff?: Dispose;
+  /** Whether pieces are draggable by hand: what a new chip or token is made as. */
+  private handling = false;
 
   constructor(readonly board: Board, options: PiecesOptions = {}) {
     this.set = options.set ?? new ChipSet();
@@ -104,6 +106,7 @@ export class Pieces implements StackHost {
   /** A chip of this value, on the board, not in any stack. */
   chip(value: number, at?: { x: number; y: number }): Chip {
     const chip = new Chip(this.board, value, this.set, this.diameter);
+    chip.draggable = this.handling;
     if (at) chip.setPosition(at.x, at.y);
     return chip;
   }
@@ -120,6 +123,7 @@ export class Pieces implements StackHost {
   /** A dealer button, a blind, a marker. */
   token(options: TokenOptions): Token {
     const token = new Token(this.board, { ...options, id: options.id ?? this.nextId('token') });
+    token.draggable = this.handling;
     this.tokenList.push(token);
     return token;
   }
@@ -398,12 +402,10 @@ export class Pieces implements StackHost {
     const accepts = options.accepts ?? (() => true);
     const canTake = options.canTake ?? (() => true);
     const flicks = options.flick === false ? undefined : options.flick ?? {};
-    const mark = () => {
-      for (const s of this.stackList) for (const c of s.chips) c.draggable = true;
-      for (const t of this.tokenList) t.draggable = true;
-    };
-    mark();
-    const unmark = this.on('move', () => mark());
+    // Every chip and token from now on, too: change made, a stack restored.
+    this.handling = true;
+    for (const s of this.stackList) for (const c of s.chips) c.draggable = true;
+    for (const t of this.tokenList) t.draggable = true;
     let held: { lead: Node; group: Chip[]; from?: ChipStack; grip: { x: number; y: number };
       rel: { x: number; y: number }[] } | undefined;
     let throwing: { die: Die; start: { x: number; y: number } } | undefined;
@@ -521,7 +523,7 @@ export class Pieces implements StackHost {
       board.off('pointerdown', pointerdown);
       board.off('pointerup', pointerup);
       board.off('update', follow);
-      unmark();
+      this.handling = false;
       for (const s of this.stackList) for (const c of s.chips) c.draggable = false;
       for (const t of this.tokenList) t.draggable = false;
       if (this.dragOff === off) this.dragOff = undefined;
