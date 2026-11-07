@@ -1,6 +1,5 @@
 import { Atlas } from '../gl/atlas.js';
 import { lensDistance } from '../gl/lens.js';
-import { LightOptions, Lighting } from '../gl/lighting.js';
 import { DrawItem, Renderer } from '../gl/renderer.js';
 import { Engine, EngineMember, engine as pageEngine } from '../runtime/engine.js';
 import type { LifecycleEvent } from '../runtime/lifecycle.js';
@@ -68,13 +67,6 @@ export interface BoardOptions {
    * always, `false` for never.
    */
   pickUp?: boolean | 'auto' | PickUpOptions;
-  /**
-   * Lights the board: cards shade by their tilt, show their stock's sheen,
-   * and cast their shadows away from the light. Off by default - an unlit
-   * board draws exactly as it always has. `true` for `DEFAULT_LIGHT`; turn it
-   * on or change it later with `board.lighting.set(...)`.
-   */
-  light?: boolean | LightOptions;
 }
 
 /**
@@ -182,8 +174,6 @@ export class Board implements EngineMember {
   localLens: boolean;
   readonly vanishX: number;
   readonly vanishY: number;
-  /** The light on the board, off until `set`. See `BoardOptions.light`. */
-  readonly lighting = new Lighting(() => this.touch());
   /** Anything the art layer wants to hang off the board. */
   readonly services = new Map<string, unknown>();
   /** See `BoardOptions.waitForArt`. */
@@ -227,7 +217,6 @@ export class Board implements EngineMember {
     this.vanishX = options.width / 2;
     this.vanishY = options.height / 2;
     this.background = options.transparent ? [0, 0, 0, 0] : cssToRgba(options.backgroundColor);
-    if (options.light) this.lighting.set(options.light === true ? {} : options.light);
 
     this.transparent = options.transparent ?? false;
     const canvas = this.makeCanvas();
@@ -736,7 +725,7 @@ export class Board implements EngineMember {
       vanishX: this.vanishX,
       vanishY: this.vanishY,
       local: this.localLens,
-    }, this.background, this.lighting.on ? this.lighting.uniforms(this.width, this.height) : undefined);
+    }, this.background);
     this.frames++;
     this.emit('render');
   }

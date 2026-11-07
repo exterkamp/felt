@@ -1,5 +1,4 @@
 import type { Painter, Region } from '../gl/atlas.js';
-import type { CardMaterial } from '../gl/lighting.js';
 import type { Board } from '../scene/board.js';
 import {
   BASE_CARD_WIDTH, CARD_INDEX_FONT, CardFaceMetrics, COURT_PALETTES, CourtPalette, DECK_STOCK,
@@ -63,11 +62,6 @@ export interface CardStyle {
   pixelRatio?: number;
   /** How dark its shadow is, 0-1. Default 1. Not part of any sheet. */
   shadow?: number;
-  /**
-   * What the stock is made of, under a lit board's light (`MATERIALS`, or a
-   * game's own `defineMaterial`). Default: the board's. Not part of any sheet.
-   */
-  material?: CardMaterial;
 }
 
 // The hairline edge, as a fraction of the paper. At the default near-white

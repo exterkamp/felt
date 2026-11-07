@@ -39,13 +39,6 @@ export { Atlas } from './gl/atlas.js';
 export type { Region, Painter } from './gl/atlas.js';
 export { Renderer } from './gl/renderer.js';
 export { lensDistance, project, cardRotation, unprojectOntoPlane } from './gl/lens.js';
-// Lighting and materials for the 3D cards.
-export {
-  DEFAULT_LIGHT, Lighting, MATERIALS, MATERIAL_SLOTS, MAX_SHADOW_REACH, MIN_ELEVATION, SHEEN_POWER,
-  defineMaterial, diffuseShade, lightDirection, packMaterial, projectOntoTable, restingShadowHeight,
-  shadowOffset, shadowReach, shadowSpread, specularAt,
-} from './gl/lighting.js';
-export type { CardMaterial, Light, LightOptions, LightingUniforms } from './gl/lighting.js';
 
 export { CardSprite } from './art/card-sprite.js';
 export { cardsReady, loadingReport } from './art/loading.js';

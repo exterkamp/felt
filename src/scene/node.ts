@@ -3,7 +3,6 @@ import { INSTANCE_FLOATS } from '../gl/shaders.js';
 import type { InstanceItem } from '../gl/renderer.js';
 import { Mat3, cardRotation, unprojectOntoPlane } from '../gl/lens.js';
 import type { Layered, Offset } from './animator.js';
-import type { CardMaterial } from '../gl/lighting.js';
 
 // Anything drawn on the board: a position, an orientation, a size and a
 // place in the order.
@@ -27,8 +26,6 @@ export interface NodeHost {
   readonly localLens: boolean;
   readonly vanishX: number;
   readonly vanishY: number;
-  /** The board's light, for anything drawn under it. A host without one is unlit. */
-  readonly lighting?: { readonly on: boolean; slot(material: CardMaterial | undefined): number };
   touch(): void;
   resort(): void;
   attach(node: Node): void;

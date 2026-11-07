@@ -1,5 +1,4 @@
 import { Atlas } from './atlas.js';
-import type { LightingUniforms } from './lighting.js';
 import {
   CARD_ROWS, INSTANCE_FLOATS, INSTANCE_FRAGMENT, INSTANCE_VERTEX,
 } from './shaders.js';
@@ -58,7 +57,6 @@ function uniforms(gl: WebGL2RenderingContext, program: WebGLProgram, names: stri
 }
 
 const PROJECTION_UNIFORMS = ['u_board', 'u_distance', 'u_vanish', 'u_local', 'u_atlas'];
-const LIGHT_UNIFORMS = ['u_lit', 'u_light', 'u_lamp', 'u_reach', 'u_lightColor', 'u_shade', 'u_materials', 'u_ratio'];
 
 
 export class Renderer {
@@ -138,7 +136,7 @@ export class Renderer {
     const gl = this.gl;
     this.generation++;
     this.cardProgram = link(gl, INSTANCE_VERTEX, INSTANCE_FRAGMENT);
-    this.cardUniforms = uniforms(gl, this.cardProgram, [...PROJECTION_UNIFORMS, ...LIGHT_UNIFORMS, 'u_frontFacing']);
+    this.cardUniforms = uniforms(gl, this.cardProgram, [...PROJECTION_UNIFORMS, 'u_frontFacing']);
 
     // The card: two columns and CARD_ROWS rows of quads, unit square.
     const grid: number[] = [];
@@ -280,26 +278,8 @@ export class Renderer {
     gl.uniform1i(u['u_atlas'], 0);
   }
 
-  /**
-   * The light, every frame: it is a handful of uniforms, and set every frame
-   * it needs nothing done when a lost context comes back.
-   */
-  private setLighting(u: Uniforms, lighting: LightingUniforms | undefined, camera: FrameCamera): void {
-    const gl = this.gl;
-    gl.uniform1f(u['u_lit'], lighting?.on ? 1 : 0);
-    if (!lighting?.on) return;
-    gl.uniform1f(u['u_ratio'], this.canvas.width / camera.width);
-    gl.uniform3fv(u['u_light'], lighting.direction);
-    gl.uniform3fv(u['u_lamp'], lighting.lamp);
-    gl.uniform2fv(u['u_reach'], lighting.reach);
-    gl.uniform3fv(u['u_lightColor'], lighting.color);
-    gl.uniform4fv(u['u_shade'], lighting.shade);
-    gl.uniform4fv(u['u_materials'], lighting.materials);
-  }
-
-  /** Draws one frame: everything in `items`, back to front, under the light if there is one. */
-  frame(items: readonly DrawItem[], camera: FrameCamera, background: [number, number, number, number],
-    lighting?: LightingUniforms): void {
+  /** Draws one frame: everything in `items`, back to front. */
+  frame(items: readonly DrawItem[], camera: FrameCamera, background: [number, number, number, number]): void {
     const gl = this.gl;
     if (gl.isContextLost()) return;
     this.ensureLayers(this.atlas.pages.length);
@@ -347,7 +327,6 @@ export class Renderer {
     if (count) {
       gl.useProgram(this.cardProgram);
       this.setProjection(this.cardUniforms, camera);
-      this.setLighting(this.cardUniforms, lighting, camera);
       // The grid is wound clockwise on screen, so that is the side facing
       // the camera; the shader shows the back on the other.
       gl.frontFace(gl.CW);

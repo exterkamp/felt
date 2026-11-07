@@ -1,5 +1,4 @@
 import type { Region } from '../gl/atlas.js';
-import type { CardMaterial } from '../gl/lighting.js';
 import type { Board } from '../scene/board.js';
 import { FLOATS, Node, packColor, writeRegion } from '../scene/node.js';
 import { Card, CardFaceMetrics, Suit } from '../core/index.js';
@@ -35,7 +34,6 @@ export class CardSprite<S extends string = Suit> extends Node {
   private resolved: ResolvedStyle;
   private displayFace: boolean | undefined;
   private shadow: number;
-  private _material?: CardMaterial;
   private readonly sheets: CardSheets;
   private readonly boardRatio: number;
   private readonly waitForArt: boolean;
@@ -81,7 +79,6 @@ export class CardSprite<S extends string = Suit> extends Node {
     this.backs = this.sheets.acquireBack(this.resolved);
     this.current = { faces: this.faces, backs: this.backs };
     this.shadow = style.shadow ?? 1;
-    this._material = style.material;
     this.attach();
   }
 
@@ -122,7 +119,6 @@ export class CardSprite<S extends string = Suit> extends Node {
     this.backs = backs;
     this.resolved = next;
     if (style.shadow !== undefined) this.shadow = style.shadow;
-    if (style.material !== undefined) this._material = style.material;
     this.board.touch();
     return this;
   }
@@ -182,22 +178,6 @@ export class CardSprite<S extends string = Suit> extends Node {
 
   setShadow(strength: number): this {
     this.shadowStrength = strength;
-    return this;
-  }
-
-  /**
-   * What its stock is made of, on a lit board: one of `MATERIALS`, a game's
-   * own `defineMaterial`, or undefined for the board's material.
-   */
-  get material(): CardMaterial | undefined { return this._material; }
-  set material(m: CardMaterial | undefined) {
-    if (m === this._material) return;
-    this._material = m;
-    this.board.touch();
-  }
-
-  setMaterial(material: CardMaterial | undefined): this {
-    this.material = material;
     return this;
   }
 
@@ -304,9 +284,7 @@ export class CardSprite<S extends string = Suit> extends Node {
     out[o + 28] = 0xffffff;
     out[o + 29] = p.lens;
     out[o + 30] = 0;
-    const lighting = this.board.lighting;
-    const lit = lighting !== undefined && lighting.on;
-    out[o + 31] = lit && this._material ? lighting.slot(this._material) : 0;
+    out[o + 31] = 0;
     // In the air - picked up, thrown - its shadow is cast on the felt rather
     // than drawn round it in its own plane: a card rolled forty degrees above
     // the table should not carry a halo rolled forty degrees with it. So the
@@ -316,14 +294,6 @@ export class CardSprite<S extends string = Suit> extends Node {
     if (p.z > 0.5 && shadow > 0) {
       out.copyWithin(o + FLOATS, o, o + FLOATS);
       out[o + FLOATS + 23] = 0;
-      if (lit) {
-        // Under a light the shader casts it: the card's whole pose, pressed
-        // onto the felt along the light's rays.
-        out[o + 22] = 2;
-        out[o + 29] = 0;
-        out[o + 30] = p.z;
-        return 2;
-      }
       out[o + 2] = 0;                                   // on the felt
       out[o + 4] = 0;                                   // and flat on it,
       out[o + 5] = 0;
