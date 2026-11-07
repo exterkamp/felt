@@ -1,7 +1,7 @@
 import './serve';
 import {
-  Board, CARD_HEIGHT, CARD_WIDTH, DISPLAY_FONT, FeltInk, FeltPaint, Mark, Table, buildDeck, createTable, defineScene,
-  paintFelt, paintFeltSvg, seeded, shuffle,
+  BORDER_PATTERNS, Board, BorderPattern, CARD_HEIGHT, CARD_WIDTH, DISPLAY_FONT, FeltInk, FeltPaint, FrameOptions, Mark, Table, buildDeck, createTable, defineScene,
+  border, paintFelt, paintFeltFrame, paintFeltSvg, seeded, shuffle,
 } from 'felt';
 import { showCode } from './code';
 import { button, expose, standalone } from './kit';
@@ -50,10 +50,10 @@ const DIVIDER = [
 // #endregion
 
 // #region Old patterns, drawn in code
-// Three designs centuries out of copyright, generated here rather than
-// copied from anyone's file: guilloché, the engraved rosettes of banknotes
-// and share certificates; the Greek key; and seigaiha, the Japanese
-// overlapping waves.
+// Designs centuries out of copyright, generated here rather than copied
+// from anyone's file: guilloché, the engraved rosettes of banknotes and
+// share certificates, and seigaiha, the Japanese overlapping waves. The
+// running borders - the Greek key and the rest - are the engine's own.
 
 /** Points along a closed curve, as path data. */
 function curve(at: (t: number) => readonly [number, number], steps: number): string {
@@ -104,21 +104,6 @@ function guillocheBand(length: number, waves: number): string[] {
 }
 
 /**
- * A Greek key border `units` keys long, in a box `units * 10` x 12: one line
- * that winds in and back out of every key without crossing itself, between
- * two rails.
- */
-function greekKey(units: number): string[] {
-  let d = 'M0 10';
-  for (let i = 0; i < units; i++) {
-    const x = i * 10;
-    d += `V2H${x + 8}V8H${x + 4}V6H${x + 6}V4H${x + 2}V10H${x + 10}`;
-  }
-  const w = units * 10;
-  return [d, `M0 0H${w}`, `M0 12H${w}`];
-}
-
-/**
  * Seigaiha across a whole area: rows of fans of rings, each row tucked
  * behind the one in front of it. Each fan cuts away what it covers before
  * it is drawn, so the pattern is one paint with no overlaps in it.
@@ -158,6 +143,8 @@ interface Painter {
   (mark: Mark, x: number, y: number, color?: FeltInk, angle?: number, alpha?: number): void;
   text(text: string, x: number, y: number, size: number, color?: FeltInk, more?: Record<string, unknown>): void;
   box(x: number, y: number, width: number, height: number, color?: FeltInk, more?: Record<string, unknown>): void;
+  /** A border round a rectangle, by the engine's paintFeltFrame. */
+  frame(pattern: BorderPattern, options: FrameOptions): void;
   /** Takes a mark made later (a loading SVG) as part of this table. */
   keep(mark: FeltPaint): void;
   board: Board;
@@ -316,16 +303,9 @@ const craps: Layout = (paint) => {
 const parlour: Layout = (paint, table) => {
   // Seigaiha the whole cloth over, faint, as if woven into it.
   paint(seigaiha(W, H, 26), CX, H / 2, 'cream', 0, 0.1);
-  // A Greek key frame: a band down each side, and across the ends between them.
-  const key = (units: number) => ({ path: greekKey(units), viewBox: [units * 10, 12], width: units * 10 * 1.4, stroke: 1.4 });
-  paint(key(30), CX, 20, 'gold');
-  paint(key(30), CX, H - 20, 'gold', 180);
-  paint(key(47), 20, H / 2, 'gold', 90);
-  paint(key(47), W - 20, H / 2, 'gold', 270);
-  for (const [x, y] of [[20, 20], [W - 20, 20], [20, H - 20], [W - 20, H - 20]]) {
-    paint({ shape: 'rect', width: 17, height: 17, stroke: 1.4 }, x, y, 'gold');
-    paint({ shape: 'rect', width: 7, height: 7, stroke: 0 }, x, y, 'gold', 45);
-  }
+  // #region A Greek key frame
+  paint.frame('greek-key', { x: CX, y: H / 2, width: W - 16, height: H - 16, depth: 17, color: 'gold' });
+  // #endregion
   // Guilloché: the rosette, a band either side of the words, a small one per spot.
   paint({ path: guilloche(), viewBox: [200, 200], width: 210, stroke: 0.7 }, CX, 190, 'cream');
   paint.text('PARLOUR', CX, 330, 26, 'gold', { spacing: 0.3 });
@@ -340,6 +320,19 @@ const parlour: Layout = (paint, table) => {
     return table.pile({ id: `spot-${i}`, x, y, faceUp: true, fan: 'down', step: 18 });
   });
   return dealRounds(table, spots, 2);
+};
+// #endregion
+
+// #region Borders: every running border the engine draws
+const borders: Layout = (paint) => {
+  paint.frame('rope', { x: CX, y: H / 2, width: W - 16, height: H - 16, depth: 14, color: 'gold' });
+  paint.text('BORDERS', CX, 52, 22, 'gold', { spacing: 0.3 });
+  BORDER_PATTERNS.forEach((pattern, i) => {
+    const y = 104 + i * 66;
+    paint.text(pattern.replaceAll('-', ' ').toUpperCase(), CX, y, 9, 'cream', { spacing: 0.3 });
+    paint(border(pattern, { length: 380, height: 18, stroke: 1.5 }), CX, y + 26, i % 2 ? 'gold' : 'white');
+  });
+  return async () => {};
 };
 // #endregion
 
@@ -366,6 +359,7 @@ const LAYOUTS = {
   baccarat: { layout: baccarat, felt: '#173a5c' },
   craps: { layout: craps, felt: '#17573a' },
   parlour: { layout: parlour, felt: '#4a1621' },
+  borders: { layout: borders, felt: '#1d2f4a' },
 };
 
 export const scene = defineScene({
@@ -386,6 +380,7 @@ export const scene = defineScene({
       paint({ text, font: DISPLAY_FONT, weight: 700, size, spacing: 0.1, ...more } as Mark, x, y, color);
     paint.box = (x, y, width, height, color = 'white', more = {}) =>
       paint({ shape: 'rect', width, height, radius: 8, stroke: 2, ...more } as Mark, x, y, color);
+    paint.frame = (pattern, options) => marks.push(...paintFeltFrame(board, pattern, options));
     // #endregion
     paint.board = board;
 

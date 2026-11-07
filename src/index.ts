@@ -54,6 +54,8 @@ export type { CardArtOptions, CourtCaches } from './art/card-art.js';
 export { courtTextureKey, renderCourt, renderCourts } from './art/court-art.js';
 export type { RenderCourtsOptions } from './art/court-art.js';
 export { FELT_INKS, FeltPaint, loadSvg, paintFelt, paintFeltSvg } from './art/felt-paint.js';
+export { BORDER_PATTERNS, border, paintFeltFrame } from './art/felt-borders.js';
+export type { BorderOptions, BorderPattern, FrameOptions } from './art/felt-borders.js';
 export type {
   DrawMark, FeltInk, FeltPaintOptions, ImageMark, Mark, PathMark, ShapeMark, TextMark,
 } from './art/felt-paint.js';

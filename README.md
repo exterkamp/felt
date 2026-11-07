@@ -197,11 +197,23 @@ await paintFeltSvg(board, medallionSvg, { width: 46, height: 46 }, { x: 240, y: 
   than an atlas page: a mark the size of the table comes out a little softer
   instead. Words in a font still loading are laid out again when it arrives.
   `board.setBackground()` changes the cloth under it all.
+- **Borders**: `border(pattern, { length, height, stroke })` is a running
+  band to paint - `greek-key`, `running-dog` (the Vitruvian scroll), `rope`,
+  `bead-and-reel`, `dentil`, `chevron`, `scallop`, `interlace` or
+  `guilloche` (all in `BORDER_PATTERNS`) - repeated a whole number of times
+  to fit its length, outside edge at the top. `paintFeltFrame` puts one round
+  a rectangle, outside edge outwards, with a block in each corner:
 
-See the Painted tables demo: blackjack, baccarat and craps, and a parlour
-table of old patterns generated in code - a guilloché rosette and band, a
-Greek key border and seigaiha waves - which need no artwork and so no
-licence.
+  ```ts
+  paintFeltFrame(board, 'greek-key', { x: 240, y: 360, width: 464, height: 704, depth: 17, color: 'gold' });
+  paintFelt(board, border('running-dog', { length: 380, height: 18 }), { x: 240, y: 130, color: 'gold' });
+  ```
+
+  They are generated, not drawn from anyone's artwork, so carry no licence.
+
+See the Painted tables demo: blackjack, baccarat and craps; a parlour table
+of old patterns generated in code - a guilloché rosette and band, a Greek
+key frame and seigaiha waves; and every border.
 
 ## From phaser-card-engine
 

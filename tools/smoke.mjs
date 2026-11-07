@@ -677,7 +677,7 @@ const painted = JSON.parse(await evaluate(`(async () => {
     return n;
   };
   const out = {};
-  for (const name of ['blackjack', 'baccarat', 'parlour', 'craps']) {   // craps last: its paint is sampled below
+  for (const name of ['blackjack', 'baccarat', 'parlour', 'borders', 'craps']) {   // craps last: its paint is sampled below
     f.show(name);
     await wait(1500);
     const marks = f.marks();
@@ -693,10 +693,12 @@ check(['blackjack', 'baccarat', 'craps'].every(n => painted[n].drawn && painted[
   `blackjack, baccarat and craps are painted, under the cards and out of the way of drags (${['blackjack', 'baccarat', 'craps'].map(n => painted[n].marks).join(', ')} marks)`);
 check(painted.parlour.drawn && painted.parlour.under && painted.parlour.marks > 15,
   `the parlour table is painted in old patterns: guilloché, Greek key, seigaiha (${painted.parlour.marks} marks)`);
+check(painted.borders.drawn && painted.borders.under && painted.borders.marks >= 9 * 2 + 12,
+  `and every running border the engine draws is painted, framed in rope (${painted.borders.marks} marks)`);
 check(painted.blackjack.cards === 52 && painted.baccarat.cards === 52 && painted.parlour.cards === 52, 'and the card tables deal onto their layouts');
 check(painted.paint.red > 200 && painted.paint.yellow > 200 && painted.paint.white > 200,
   `the paint is the colour asked for: red, yellow and white on the craps layout (${painted.paint.red}/${painted.paint.yellow}/${painted.paint.white} px)`);
-const layoutPages = Math.max(...['blackjack', 'baccarat', 'craps', 'parlour'].map(n => painted[n].pages));
+const layoutPages = Math.max(...['blackjack', 'baccarat', 'craps', 'parlour', 'borders'].map(n => painted[n].pages));
 check(layoutPages <= 3, `and every layout fits the atlas in ${layoutPages} page(s)`);
 // --- magnetic stacks: flicked near its suit, it is drawn in -----------------
 console.log('\nmagnetic stacks');
