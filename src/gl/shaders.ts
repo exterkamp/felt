@@ -272,29 +272,36 @@ vec3 lightCard(vec4 card, bool facing) {
 // How far a point of a cast shadow is from its outline, on the felt: the
 // card's rectangle as the light lays it down, a parallelogram - a line, when
 // the card is edge-on to the light. Its corners rounded by the card's own.
+// One edge of the cast shadow's outline: the nearest distance to it so far,
+// and whether a ray from the point crosses it (inside / outside). No local
+// arrays: some GPUs' compilers reject an array constructor's precision.
+void castEdge(vec2 p, vec2 a, vec2 b, inout float d, inout float s) {
+  vec2 e = b - a;
+  vec2 w = p - a;
+  vec2 q = w - e * clamp(dot(w, e) / max(dot(e, e), 1e-8), 0.0, 1.0);
+  d = min(d, dot(q, q));
+  bvec3 c = bvec3(p.y >= a.y, p.y < b.y, e.x * w.y > e.y * w.x);
+  if (all(c) || all(not(c))) s = -s;
+}
+
 float castDistance(vec2 local, vec2 half_, float radius, vec2 across, vec2 down) {
   vec2 p = across * local.x + down * local.y;
   vec2 h = max(half_ - radius, 0.0);
-  vec2 v[4] = vec2[4](across * -h.x + down * -h.y, across * h.x + down * -h.y,
-                      across * h.x + down * h.y, across * -h.x + down * h.y);
-  float d = dot(p - v[0], p - v[0]);
+  vec2 c0 = across * -h.x + down * -h.y;
+  vec2 c1 = across * h.x + down * -h.y;
+  vec2 c2 = across * h.x + down * h.y;
+  vec2 c3 = across * -h.x + down * h.y;
+  float d = dot(p - c0, p - c0);
   float s = 1.0;
-  for (int i = 0; i < 4; i++) {
-    vec2 a = v[i];
-    vec2 b = v[(i + 1) % 4];
-    vec2 e = b - a;
-    vec2 w = p - a;
-    vec2 q = w - e * clamp(dot(w, e) / max(dot(e, e), 1e-8), 0.0, 1.0);
-    d = min(d, dot(q, q));
-    bvec3 c = bvec3(p.y >= a.y, p.y < b.y, e.x * w.y > e.y * w.x);
-    if (all(c) || all(not(c))) s = -s;
-  }
+  castEdge(p, c0, c1, d, s);
+  castEdge(p, c1, c2, d, s);
+  castEdge(p, c2, c3, d, s);
+  castEdge(p, c3, c0, d, s);
   float su = length(across);
   float sv = abs(across.x * down.y - across.y * down.x) / max(su, 1e-4);
   return s * sqrt(d) - radius * min(su, sv);
 }
 
-// One layer of shadow, measured from the outline in felt units.
 float shadowAt(float d, float grow, float alpha, float blur) {
   return alpha * clamp(0.5 - (d - grow) / max(blur, 1e-4), 0.0, 1.0);
 }
