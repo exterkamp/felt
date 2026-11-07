@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>felt — readouts, toasts, announcements</title>
+    <style>
+      @font-face {
+        font-family: 'Cinzel';
+        src: url('./fonts/cinzel-latin.woff2') format('woff2');
+        font-weight: 400 900;
+        font-display: block;
+      }
+      @font-face {
+        font-family: 'Jost';
+        src: url('./fonts/jost-latin.woff2') format('woff2');
+        font-weight: 300 700;
+        font-display: block;
+      }
+      @font-face {
+        font-family: 'Archivo';
+        src: url('./fonts/archivo-latin.woff2') format('woff2');
+        font-weight: 500 700;
+        font-display: block;
+      }
+      html, body {
+        margin: 0;
+        min-height: 100%;
+        background: #0b2119;
+        color: #cfead0;
+        font-family: 'Jost', system-ui, sans-serif;
+      }
+      body { display: flex; flex-direction: column; align-items: center; gap: 0.6rem; padding: 0.8rem; box-sizing: border-box; }
+      h1 { font-family: 'Cinzel', Georgia, serif; font-size: 1.1rem; letter-spacing: 0.06em; margin: 0; color: #fdfdfd; text-transform: uppercase; }
+      p { margin: 0; font-size: 0.8rem; text-align: center; max-width: 30rem; color: #9fc4a4; }
+      p code { color: #cfead0; }
+      #board { width: min(480px, 100%); touch-action: none; }
+      .row { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; justify-content: center; max-width: 30rem; }
+      button {
+        font-family: 'Cinzel', Georgia, serif; font-size: 0.68rem; letter-spacing: 0.05em;
+        text-transform: uppercase; color: #fdfdfd; background: #17594a;
+        border: 1px solid #cfead0; border-radius: 4px; padding: 0.35rem 0.6rem; cursor: pointer;
+      }
+      .home {
+        position: fixed; top: 0.55rem; left: 0.6rem; z-index: 20;
+        font-family: 'Cinzel', Georgia, serif; font-size: 0.66rem;
+        letter-spacing: 0.05em; text-transform: uppercase; text-decoration: none;
+        color: #fdfdfd; background: #17594a; border: 1px solid #cfead0;
+        border-radius: 4px; padding: 0.28rem 0.5rem; line-height: 1;
+      }
+      .home:hover, .home:focus-visible { border-color: #ffd166; color: #ffd166; }
+      label { font-size: 0.72rem; display: flex; align-items: center; gap: 0.35rem; color: #9fc4a4; }
+      #atlas { font-family: ui-monospace, monospace; font-size: 0.68rem; color: #7fae86; }
+      .said { width: min(480px, 100%); box-sizing: border-box; background: #081a13; border: 1px solid #1f5e4d; border-radius: 6px; padding: 0.4rem 0.6rem; }
+      .said h2 { margin: 0 0 0.25rem; font-family: 'Cinzel', Georgia, serif; font-size: 0.66rem; letter-spacing: 0.1em; text-transform: uppercase; color: #7fae86; }
+      #said { margin: 0; padding: 0 0 0 1.1rem; font-size: 0.74rem; line-height: 1.45; max-height: 7.5rem; overflow: auto; }
+      #said li.assertive { color: #ffb3b3; }
+      #said li small { color: #6f8f78; margin-left: 0.4em; }
+    </style>
+  </head>
+  <body>
+    <a class="home" href="./">&larr; Demos</a>
+    <h1>Readouts &amp; toasts</h1>
+    <p>
+      The score, the clock and the pile labels are <code>readout</code>s: glyphs on the board,
+      painted once and reused, so bumping the score paints nothing. Banners and floats are
+      <code>toastsOf(board)</code>, a layer pinned over the canvas. Everything said to a
+      screen reader goes through <code>announce</code> &mdash; and is logged below.
+      Tap the stock to turn a card; tap the waste to send it home.
+    </p>
+    <div id="board"></div>
+    <div class="row">
+      <button id="bump">+15</button>
+      <button id="hammer">Hammer ×500</button>
+      <button id="rapid">60/s for 2s</button>
+      <button id="reset">Reset</button>
+    </div>
+    <div class="row">
+      <button id="nice">Nice!</button>
+      <button id="turn">Player 2's turn</button>
+      <button id="bottom">Bottom banner</button>
+      <button id="stuck">No moves left</button>
+      <button id="float">Float +10</button>
+      <label><input type="checkbox" id="reduced" /> reduced motion</label>
+    </div>
+    <p id="atlas"></p>
+    <section class="said" aria-hidden="true">
+      <h2>Said to screen readers</h2>
+      <ol id="said"></ol>
+    </section>
+    <script type="module" src="./readouts.ts"></script>
+  </body>
+</html>
