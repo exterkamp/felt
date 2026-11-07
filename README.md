@@ -127,6 +127,65 @@ can't take the card doesn't pull it. `onRest(path)` reports
 `path.caught`, the index of the magnet that took it. The Magnetic stacks
 demo has one stack per suit.
 
+## Light and materials
+
+```ts
+createBoard({ ..., light: true });                         // DEFAULT_LIGHT
+createBoard({ ..., light: { azimuth: -35, elevation: 50, ambient: 0.45, material: MATERIALS.glossy } });
+board.lighting.set({ azimuth: 90 });  // on, or changed; board.lighting.off() to go back
+board.lighting.elevation = 30;        // plain numbers: tween them, or animator.play() them
+new CardSprite(board, card, { material: MATERIALS.foil });  // or card.setMaterial(...)
+const pearl = defineMaterial({ name: 'pearl', specular: 0.7, shininess: 300, sheen: 0.2, foil: 0.25 });
+```
+
+**Off by default, and off is the old picture to the pixel.** An unlit board
+takes the same path through the shader it always did; the pages that were
+there before compare byte for byte against the commit before lighting. A
+board opts in with `light`, and that choice was deliberate: the felt's
+existing demos, its smoke test and every game built on it were tuned against
+the unlit look, and a light is a style - a game should pick it.
+
+Lit, three things change, all from the one light:
+
+- **Shading by tilt.** A card turned towards the light brightens and one turned
+  away darkens, by `ambient + (1 - ambient) * (n . l)` - *normalised* to a
+  card lying flat, so a flat card under any light is drawn exactly as painted
+  (the smoke test checks it) and only what tips changes. `intensity` and
+  `color` scale and tint all of it. `ambient` is how flat the light is: 1 is
+  no shading at all.
+- **Sheen.** The stock has a material: `specular` (the highlight's strength),
+  `shininess` (how tight it is), `sheen` (a broad satin glow), `metallic` (the
+  highlight takes the card's own colour), `grain` and `grainScale` (a woven
+  linen tooth that breaks up the highlight - faded out where the weave would
+  be finer than a pixel), and `foil` (the highlight runs through the colours
+  as the card turns). The highlight is the reflection of a lamp `distance`
+  board heights away, so it is a spot that slides across a card as it rocks,
+  tips or flips, not a whole card flaring white at one angle. `MATERIALS` has
+  `matte`, `linen` (the default), `glossy` and `foil`; a board's
+  `lighting.material` is every card's that does not name one. Materials are
+  plain data, and a board can draw `MATERIAL_SLOTS` (16) different ones at
+  once - each card carries a slot number in its instance, not a draw call.
+- **Shadows that follow the light.** A card on the felt keeps the halo it
+  always had, pushed away from the light. A card in the air - picked up,
+  thrown, flipped - is drawn a second time in its own pose and pressed onto
+  the felt along the light's rays, so its shadow is the shape the tipped,
+  rolled card really casts: longest when it faces the light, a soft line when
+  it is edge-on to it. The higher it is the further it falls (`shadowOffset`:
+  height times the light's reach, at most `MAX_SHADOW_REACH` a unit) and the
+  softer it grows (`softness` a unit of height). The shape is measured on the
+  felt, not in the card's own units, so a squashed shadow is as soft one way
+  as the other.
+
+The arithmetic is in `src/gl/lighting.ts` and again in the fragment shader,
+the way the lens is: `lightDirection`, `diffuseShade`, `specularAt`,
+`shadowOffset`, `projectOntoTable` and `shadowSpread` are what the specs
+test, and what a game can ask without a GPU. The light is uniforms set
+every frame, so a lost context needs nothing done for it. It costs one
+float per card, no extra draw calls, and nothing measurable in `frameWork`
+(see the stress page). The Lighting demo has a card in each material
+rocking under a lamp you can move, a card held up by sliders, and a deck to
+toss and pick up from.
+
 ## The table: making a game
 
 Underneath, placement is geometry: a Stack or a Hand says where its *n*th
@@ -376,8 +435,10 @@ yet:
 - **Multiplayer, over a real network.** `Simulation` is the deterministic
   state and the lockstep protocol; a transport (WebSocket, WebRTC), joining
   mid-game from a snapshot, and rollback for late commands are next.
-- **Lighting and materials** for the 3D cards: a light direction, a sheen on
-  the stock, real cast shadows onto the felt rather than the card's own halo.
+- **More light.** Lighting and materials are in (see above). Still to do:
+  light on the felt itself (its nap, and a pool of lamplight), more than one
+  light, shadows cast by sprites and pieces as well as cards, and a back that
+  is a different stock from its face.
 - **A stress page** - a thousand cards in flight - to measure on real GPUs.
 
 ## Licence
