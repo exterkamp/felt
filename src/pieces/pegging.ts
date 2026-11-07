@@ -62,7 +62,7 @@ export interface PegTrackOptions {
   rowGap?: number;
   /** Between one lane and the next. Default 7. */
   laneGap?: number;
-  /** Round the holes to the board's edge. Default 10. */
+  /** Round the holes to the board's edge. Default 14. */
   margin?: number;
 }
 
@@ -89,7 +89,7 @@ export function pegTrack(options: PegTrackOptions = {}): PegTrack {
   const gap = options.groupGap ?? 4;
   const rowGap = options.rowGap ?? 9;
   const laneGap = options.laneGap ?? 7;
-  const margin = options.margin ?? 10;
+  const margin = options.margin ?? 14;
   const start = pitch * 3.2;
   const run = 59 * pitch + 11 * gap;
   const width = margin * 2 + start + run;
