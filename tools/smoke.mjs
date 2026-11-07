@@ -982,6 +982,90 @@ check(!sol.suits.aceOnSpades && sol.suits.aceOnHearts && sol.suits.spadeAce && !
 check(sol.run.onKing === 'clubs-K,hearts-Q,spades-J' && sol.run.left === 'diamonds-9+',
   `a run picked up by its first card moves together, and uncovers the card under it (${sol.run.onKing} / ${sol.run.left})`);
 
+// --- undo, redo, and a game saved across a reload ---------------------------
+console.log('\nundo and saves');
+// The arrangement as the player sees it: each zone's cards, and which way up.
+const SOL_STATE = `JSON.stringify(Object.fromEntries(__felt.table.zones.map(z => [z.id, z.cards.map(c => c.card.id + (c.card.faceUp ? '+' : '-'))])))`;
+// Cards not sitting where their zone lays them: "right numbers, wrong screen".
+const SOL_ASTRAY = `__felt.table.zones.reduce((n, z) => { const p = z.places(z.size);
+  return n + z.cards.filter((c, i) => Math.hypot(c.x - p[i].x, c.y - p[i].y) > 1 || Math.abs(c.angle - p[i].angle) > 0.01).length; }, 0)`;
+const SOL_QUIET = `(async () => { const f = __felt; const w = (ms) => new Promise(r => setTimeout(r, ms)); const t = performance.now();
+  while ((f.table.busy || f.table.cards.some(c => f.table.isMoving(c) || f.animator.busy(c, 'flip') || f.animator.busy(c, 'move')))
+    && performance.now() - t < 15000) await w(100);
+  await w(250); return true; })()`;
+const undoRun = JSON.parse(await evaluate(`(async () => {
+  const f = __felt; const b = f.board; const wait = (ms) => new Promise(r => setTimeout(r, ms));
+  const quiet = () => ${SOL_QUIET};
+  const state = () => ${SOL_STATE};
+  const astray = () => ${SOL_ASTRAY};
+  const rect = b.canvas.getBoundingClientRect();
+  const page = (x, y) => ({ clientX: rect.left + x / b.width * rect.width, clientY: rect.top + y / b.height * rect.height });
+  const fire = (type, x, y) => b.canvas.dispatchEvent(new PointerEvent(type, { ...page(x, y), pointerId: 16, bubbles: true }));
+  const drag = async (card, to) => {
+    const g = -32, x0 = card.x, y0 = card.y + g;
+    fire('pointerdown', x0, y0); await wait(120);
+    const t = to.next(); for (let i = 1; i <= 8; i++) { fire('pointermove', x0 + (t.x - x0) * i / 8, y0 + (t.y + g - y0) * i / 8); await wait(30); }
+    await wait(150); fire('pointerup', t.x, t.y + g); await wait(900);
+  };
+  // A deal with a column-to-column move that uncovers a face-down card.
+  let legal;
+  for (let s = 1; s <= 40 && !legal; s++) {
+    await f.deal(s);
+    for (const from of f.columns) for (const to of f.columns)
+      if (!legal && from !== to && from.size > 1 && to.accepts([from.top.card], from)) legal = { from, to, under: from.cards.at(-2) };
+  }
+  if (!legal) return JSON.stringify({ legal: false });
+  await quiet();
+  const dealt = state(); const dealtScore = document.getElementById('score').textContent;
+  const s0 = f.stock.top; fire('pointerdown', s0.x, s0.y); fire('pointerup', s0.x, s0.y); await wait(700);
+  await drag(legal.from.top, legal.to);
+  await quiet();
+  const played = state(); const steps = f.history.index;
+  const uncovered = legal.under.card.faceUp; const playedScore = document.getElementById('score').textContent;
+  let undos = 0; while (await f.history.undo()) undos++;
+  await quiet();
+  const undone = { same: state() === dealt, astray: astray(), under: legal.under.card.faceUp, score: document.getElementById('score').textContent === dealtScore,
+    undo: document.getElementById('undo').disabled, redo: !document.getElementById('redo').disabled };
+  let redos = 0; while (await f.history.redo()) redos++;
+  await quiet();
+  const redone = { same: state() === played, astray: astray(), score: document.getElementById('score').textContent === playedScore };
+  // Undone while the card is still in the air: it turns round and goes back.
+  const s1 = f.stock.top; fire('pointerdown', s1.x, s1.y); fire('pointerup', s1.x, s1.y); await wait(40);
+  const midFlight = await f.history.undo(); await quiet();
+  const backMidFlight = state() === played && astray() === 0;
+  return JSON.stringify({ legal: true, steps, uncovered, undos, undone, redos, redone, midFlight, backMidFlight, played,
+    log: f.history.log().map(m => m.by + ':' + m.cards.join('+') + ':' + m.from + '>' + m.to) });
+})()`));
+check(undoRun.legal && undoRun.steps === 2 && undoRun.uncovered,
+  `two plays are two steps: a tap on the stock, and a drag that turns up the card under it (${undoRun.log?.join(', ')})`);
+check(undoRun.undos === 2 && undoRun.undone.same && !undoRun.undone.under && undoRun.undone.astray === 0,
+  `undo puts back the deal exactly - every zone, every side, the uncovered card face down again (${undoRun.undone.astray} astray)`);
+check(undoRun.undone.score && undoRun.undone.undo && undoRun.undone.redo, 'and the score with it, Undo greyed out and Redo lit');
+check(undoRun.redos === 2 && undoRun.redone.same && undoRun.redone.astray === 0 && undoRun.redone.score,
+  `redo plays both again, to the same arrangement and score (${undoRun.redone.astray} astray)`);
+check(undoRun.midFlight && undoRun.backMidFlight, 'a move undone while its card is still in the air lands back where it was');
+// Reloaded, the game comes back where it was, with no deal and its history.
+await send('Page.reload');
+await until('__felt?.columns?.length === 7');
+const resumedAt = JSON.parse(await evaluate(`JSON.stringify({ ok: __felt.resumed.ok, busy: __felt.table.busy, state: ${SOL_STATE} })`));
+await evaluate(SOL_QUIET);
+const resumed = JSON.parse(await evaluate(`JSON.stringify({ state: ${SOL_STATE}, astray: ${SOL_ASTRAY}, index: __felt.history.index,
+  undo: !document.getElementById('undo').disabled })`));
+check(resumedAt.ok && !resumedAt.busy && resumedAt.state === undoRun.played,
+  'reloaded, the game resumes at once where it was - no deal, the same zones and sides');
+check(resumed.state === undoRun.played && resumed.astray === 0 && resumed.index === 2 && resumed.undo,
+  `and every card is in its place, with the moves still there to undo (${resumed.astray} astray)`);
+// A save that will not read: a new game, not an error.
+await send('Page.navigate', { url: `${host}/stacks.html` });
+await until('!!window.__felt?.board');
+await evaluate(`localStorage.setItem('felt:save:felt-solitaire', '{"format":1,"game":"felt-solit'); true`);
+await open('solitaire.html', '__felt?.columns?.length === 7');
+await evaluate(SOL_QUIET);
+const fresh = JSON.parse(await evaluate(`JSON.stringify({ resumed: __felt.resumed, sizes: __felt.columns.map(c => c.size), stock: __felt.stock.size,
+  saved: JSON.parse(localStorage.getItem('felt:save:felt-solitaire') ?? 'null')?.history?.steps?.length })`));
+check(!fresh.resumed.ok && fresh.resumed.problem === 'corrupt' && JSON.stringify(fresh.sizes) === '[1,2,3,4,5,6,7]' && fresh.stock === 24
+  && fresh.saved === 1, `a corrupt save is set aside for a new deal, which is saved in its place (${fresh.resumed.problem})`);
+
 // --- tap to move: selection, legal targets, refusals, highlights that follow --
 console.log('\ntap to move');
 await open('select.html', '__felt?.columns?.length === 6 && !__felt.table.busy');
@@ -1075,90 +1159,6 @@ check(sel.mid.n === 2 && sel.mid.off < 0.01 && sel.mid.along > 5 && sel.mid.left
   `a highlight rides its card in flight: ${sel.mid.n} sprites at its shown pose, half way (off by ${sel.mid.off.toFixed(3)})`);
 check(sel.landed.moved > 50 && sel.landed.ring.b - sel.felt.b > 40 && Math.abs(sel.landed.old.b - sel.unlit['column-4'].b) < 6 && sel.was.ring.b - sel.felt.b > 40,
   `and lights it where it lands, not where it was (+${(sel.landed.ring.b - sel.felt.b).toFixed(0)} there, ${(sel.landed.old.b - sel.unlit['column-4'].b).toFixed(0)} here)`);
-// --- undo, redo, and a game saved across a reload ---------------------------
-console.log('\nundo and saves');
-// The arrangement as the player sees it: each zone's cards, and which way up.
-const SOL_STATE = `JSON.stringify(Object.fromEntries(__felt.table.zones.map(z => [z.id, z.cards.map(c => c.card.id + (c.card.faceUp ? '+' : '-'))])))`;
-// Cards not sitting where their zone lays them: "right numbers, wrong screen".
-const SOL_ASTRAY = `__felt.table.zones.reduce((n, z) => { const p = z.places(z.size);
-  return n + z.cards.filter((c, i) => Math.hypot(c.x - p[i].x, c.y - p[i].y) > 1 || Math.abs(c.angle - p[i].angle) > 0.01).length; }, 0)`;
-const SOL_QUIET = `(async () => { const f = __felt; const w = (ms) => new Promise(r => setTimeout(r, ms)); const t = performance.now();
-  while ((f.table.busy || f.table.cards.some(c => f.table.isMoving(c) || f.animator.busy(c, 'flip') || f.animator.busy(c, 'move')))
-    && performance.now() - t < 15000) await w(100);
-  await w(250); return true; })()`;
-const undoRun = JSON.parse(await evaluate(`(async () => {
-  const f = __felt; const b = f.board; const wait = (ms) => new Promise(r => setTimeout(r, ms));
-  const quiet = () => ${SOL_QUIET};
-  const state = () => ${SOL_STATE};
-  const astray = () => ${SOL_ASTRAY};
-  const rect = b.canvas.getBoundingClientRect();
-  const page = (x, y) => ({ clientX: rect.left + x / b.width * rect.width, clientY: rect.top + y / b.height * rect.height });
-  const fire = (type, x, y) => b.canvas.dispatchEvent(new PointerEvent(type, { ...page(x, y), pointerId: 16, bubbles: true }));
-  const drag = async (card, to) => {
-    const g = -32, x0 = card.x, y0 = card.y + g;
-    fire('pointerdown', x0, y0); await wait(120);
-    const t = to.next(); for (let i = 1; i <= 8; i++) { fire('pointermove', x0 + (t.x - x0) * i / 8, y0 + (t.y + g - y0) * i / 8); await wait(30); }
-    await wait(150); fire('pointerup', t.x, t.y + g); await wait(900);
-  };
-  // A deal with a column-to-column move that uncovers a face-down card.
-  let legal;
-  for (let s = 1; s <= 40 && !legal; s++) {
-    await f.deal(s);
-    for (const from of f.columns) for (const to of f.columns)
-      if (!legal && from !== to && from.size > 1 && to.accepts([from.top.card], from)) legal = { from, to, under: from.cards.at(-2) };
-  }
-  if (!legal) return JSON.stringify({ legal: false });
-  await quiet();
-  const dealt = state(); const dealtScore = document.getElementById('score').textContent;
-  const s0 = f.stock.top; fire('pointerdown', s0.x, s0.y); fire('pointerup', s0.x, s0.y); await wait(700);
-  await drag(legal.from.top, legal.to);
-  await quiet();
-  const played = state(); const steps = f.history.index;
-  const uncovered = legal.under.card.faceUp; const playedScore = document.getElementById('score').textContent;
-  let undos = 0; while (await f.history.undo()) undos++;
-  await quiet();
-  const undone = { same: state() === dealt, astray: astray(), under: legal.under.card.faceUp, score: document.getElementById('score').textContent === dealtScore,
-    undo: document.getElementById('undo').disabled, redo: !document.getElementById('redo').disabled };
-  let redos = 0; while (await f.history.redo()) redos++;
-  await quiet();
-  const redone = { same: state() === played, astray: astray(), score: document.getElementById('score').textContent === playedScore };
-  // Undone while the card is still in the air: it turns round and goes back.
-  const s1 = f.stock.top; fire('pointerdown', s1.x, s1.y); fire('pointerup', s1.x, s1.y); await wait(40);
-  const midFlight = await f.history.undo(); await quiet();
-  const backMidFlight = state() === played && astray() === 0;
-  return JSON.stringify({ legal: true, steps, uncovered, undos, undone, redos, redone, midFlight, backMidFlight, played,
-    log: f.history.log().map(m => m.by + ':' + m.cards.join('+') + ':' + m.from + '>' + m.to) });
-})()`));
-check(undoRun.legal && undoRun.steps === 2 && undoRun.uncovered,
-  `two plays are two steps: a tap on the stock, and a drag that turns up the card under it (${undoRun.log?.join(', ')})`);
-check(undoRun.undos === 2 && undoRun.undone.same && !undoRun.undone.under && undoRun.undone.astray === 0,
-  `undo puts back the deal exactly - every zone, every side, the uncovered card face down again (${undoRun.undone.astray} astray)`);
-check(undoRun.undone.score && undoRun.undone.undo && undoRun.undone.redo, 'and the score with it, Undo greyed out and Redo lit');
-check(undoRun.redos === 2 && undoRun.redone.same && undoRun.redone.astray === 0 && undoRun.redone.score,
-  `redo plays both again, to the same arrangement and score (${undoRun.redone.astray} astray)`);
-check(undoRun.midFlight && undoRun.backMidFlight, 'a move undone while its card is still in the air lands back where it was');
-// Reloaded, the game comes back where it was, with no deal and its history.
-await send('Page.reload');
-await until('__felt?.columns?.length === 7');
-const resumedAt = JSON.parse(await evaluate(`JSON.stringify({ ok: __felt.resumed.ok, busy: __felt.table.busy, state: ${SOL_STATE} })`));
-await evaluate(SOL_QUIET);
-const resumed = JSON.parse(await evaluate(`JSON.stringify({ state: ${SOL_STATE}, astray: ${SOL_ASTRAY}, index: __felt.history.index,
-  undo: !document.getElementById('undo').disabled })`));
-check(resumedAt.ok && !resumedAt.busy && resumedAt.state === undoRun.played,
-  'reloaded, the game resumes at once where it was - no deal, the same zones and sides');
-check(resumed.state === undoRun.played && resumed.astray === 0 && resumed.index === 2 && resumed.undo,
-  `and every card is in its place, with the moves still there to undo (${resumed.astray} astray)`);
-// A save that will not read: a new game, not an error.
-await send('Page.navigate', { url: `${host}/stacks.html` });
-await until('!!window.__felt?.board');
-await evaluate(`localStorage.setItem('felt:save:felt-solitaire', '{"format":1,"game":"felt-solit'); true`);
-await open('solitaire.html', '__felt?.columns?.length === 7');
-await evaluate(SOL_QUIET);
-const fresh = JSON.parse(await evaluate(`JSON.stringify({ resumed: __felt.resumed, sizes: __felt.columns.map(c => c.size), stock: __felt.stock.size,
-  saved: JSON.parse(localStorage.getItem('felt:save:felt-solitaire') ?? 'null')?.history?.steps?.length })`));
-check(!fresh.resumed.ok && fresh.resumed.problem === 'corrupt' && JSON.stringify(fresh.sizes) === '[1,2,3,4,5,6,7]' && fresh.stock === 24
-  && fresh.saved === 1, `a corrupt save is set aside for a new deal, which is saved in its place (${fresh.resumed.problem})`);
-
 // --- two seats: one game, three copies, in lockstep -------------------------
 console.log('\ntwo seats');
 await open('seats.html', '!!window.__felt?.server');
