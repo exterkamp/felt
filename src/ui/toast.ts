@@ -106,6 +106,7 @@ interface Entry {
   float?: { x: number; y: number; rise: number };
   options: ToastOptions & FloatOptions;
   resolve: () => void;
+  done: Promise<void>;
   counted: number;
 }
 
@@ -201,7 +202,7 @@ export class Toaster {
   /** Text rising off a point on the board - a "+10" off a card. */
   float(text: string, x: number, y: number, options: FloatOptions = {}): ToastHandle {
     const duration = options.duration ?? 900;
-    // The whole rise is its entering phase; it is never "shown" still.
+    // One rise across its three phases: in, shown and out are just stretches of it.
     const state = this.queue.push({
       text, place: 'float', coalesce: false, duration: Math.max(0, duration - this.queue.enter - this.queue.exit),
     });
@@ -265,11 +266,10 @@ export class Toaster {
     if (!entry) {
       let resolve!: () => void;
       const done = new Promise<void>((r) => { resolve = r; });
-      entry = { state, options, resolve, counted: 0, float };
-      (entry as Entry & { done: Promise<void> }).done = done;
+      entry = { state, options, resolve, done, counted: 0, float };
       this.entries.set(state.id, entry);
     }
-    const e = entry as Entry & { done: Promise<void> };
+    const e = entry;
     this.wake();
     const queue = this.queue;
     const wake = () => this.wake();
