@@ -80,3 +80,13 @@ export type {
   Accepts, CanTake, DragOptions, FlickRelease, TableDealOptions, HandOptions, MoveCause, MoveOptions, PileOptions, SyncOptions,
   TableMove, TableOptions, TableTap, ZoneRules,
 } from './table/table.js';
+export {
+  captureTable, cloneState, diffStates, isTableState, restoreTable, sameState, stateFits, tableFits,
+} from './table/state.js';
+export type { LooseCard, RestoreOptions, StateDiff, TableState } from './table/state.js';
+export { History, createHistory, isSavedHistory } from './table/history.js';
+export type {
+  GameState, HistoryChange, HistoryOptions, HistoryStep, MoveRecord, SavedHistory,
+} from './table/history.js';
+export { GameSave, SAVE_FORMAT, autosave, createSave, decodeSave, encodeSave, memoryStore } from './table/save.js';
+export type { AutosaveOptions, GameSaveOptions, SaveProblem, SaveRead, SaveStore, SavedGame } from './table/save.js';
