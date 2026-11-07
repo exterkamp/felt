@@ -13,8 +13,8 @@ import { button, expose, slot, standalone } from './kit';
 // "+10"s over it, and every move said aloud through the page's live region.
 
 const W = 480;
-const H = 600;
-const PILE_Y = 290;
+const H = 500;
+const PILE_Y = 340;
 const NAMES: Record<string, string> = {
   A: 'ace', 2: 'two', 3: 'three', 4: 'four', 5: 'five', 6: 'six', 7: 'seven', 8: 'eight', 9: 'nine',
   10: 'ten', J: 'jack', Q: 'queen', K: 'king',

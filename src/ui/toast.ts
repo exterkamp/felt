@@ -202,12 +202,12 @@ export class Toaster {
   float(text: string, x: number, y: number, options: FloatOptions = {}): ToastHandle {
     const duration = options.duration ?? 900;
     // The whole rise is its entering phase; it is never "shown" still.
-    const state = this.queue.push({ text, place: 'float', duration: 0, coalesce: false });
-    const entry = this.track(state, options);
-    this.entries.get(state.id)!.float = { x, y, rise: options.rise ?? 48 };
-    state.duration = Math.max(0, duration - this.queue.enter - this.queue.exit);
+    const state = this.queue.push({
+      text, place: 'float', coalesce: false, duration: Math.max(0, duration - this.queue.enter - this.queue.exit),
+    });
+    const handle = this.track(state, options, { x, y, rise: options.rise ?? 48 });
     this.speak(text, options.announce ?? false);
-    return entry;
+    return handle;
   }
 
   /** Sends every toast off. */
@@ -260,12 +260,12 @@ export class Toaster {
     this.announcer.announce(words, { politeness });
   }
 
-  private track(state: ToastState, options: ToastOptions & FloatOptions): ToastHandle {
+  private track(state: ToastState, options: ToastOptions & FloatOptions, float?: Entry['float']): ToastHandle {
     let entry = this.entries.get(state.id);
     if (!entry) {
       let resolve!: () => void;
       const done = new Promise<void>((r) => { resolve = r; });
-      entry = { state, options, resolve, counted: 0 };
+      entry = { state, options, resolve, counted: 0, float };
       (entry as Entry & { done: Promise<void> }).done = done;
       this.entries.set(state.id, entry);
     }
