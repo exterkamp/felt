@@ -2,7 +2,7 @@ import './serve';
 import {
   CARD_HEIGHT, CARD_WIDTH, CardSprite, animatorOf, buildDeck, defineScene, flickCard, flipCard,
   paintFelt, seeded, shuffle, throwCard,
-} from 'felt';
+} from '@exterkamp/felt';
 import { showCode } from './code';
 import { expose, label, standalone } from './kit';
 

@@ -1,5 +1,5 @@
 import './serve';
-import { CardSprite, buildDeck, defineScene } from 'felt';
+import { CardSprite, buildDeck, defineScene } from '@exterkamp/felt';
 import { showCode } from './code';
 import { expose, standalone } from './kit';
 

@@ -5,7 +5,7 @@
     "rootDir": ".",
     "types": ["vite/client"],
     "baseUrl": ".",
-    "paths": { "felt": ["src/index.ts"], "felt/core": ["src/core/index.ts"] },
+    "paths": { "@exterkamp/felt": ["src/index.ts"], "@exterkamp/felt/core": ["src/core/index.ts"] },
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "allowImportingTsExtensions": false

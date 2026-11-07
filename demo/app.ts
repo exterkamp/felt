@@ -1,5 +1,5 @@
 import './serve';
-import { Director, Scene, defineScene, engine } from 'felt';
+import { Director, Scene, defineScene, engine } from '@exterkamp/felt';
 
 // The demo as one page.
 //

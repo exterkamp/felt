@@ -90,10 +90,22 @@ flowchart LR
   input["Input & update"] --> animator["Animator offsets"] --> prepass["Paint missing faces"] --> write["Write instances"] --> draw["1 draw call"]
 ```
 
+## Install
+
+```bash
+npm install @exterkamp/felt
+```
+
+The card art and fonts ship in the package under `assets/`. Serve
+`node_modules/@exterkamp/felt/assets/cards` at `/cards` (or call
+`setCardAssetBase('/static/cards')`), the same way you would copy any static
+asset. The court and image workers start from blob URLs, so a page with a
+Content Security Policy needs `worker-src blob:`.
+
 ## Quick start
 
 ```ts
-import { createBoard, createTable, shuffledDeck } from 'felt';
+import { createBoard, createTable, shuffledDeck } from '@exterkamp/felt';
 
 const board = createBoard({ parent: 'board', width: 480, height: 640, backgroundColor: '#13463a' });
 const table = createTable(board);

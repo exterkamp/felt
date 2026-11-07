@@ -1,5 +1,5 @@
 import './serve';
-import { Card, Rules, Simulation, Stamped, buildDeck, createTable, defineScene, shuffle } from 'felt';
+import { Card, Rules, Simulation, Stamped, buildDeck, createTable, defineScene, shuffle } from '@exterkamp/felt';
 import { showCode } from './code';
 import { expose, standalone } from './kit';
 

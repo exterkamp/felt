@@ -2,7 +2,7 @@ import './serve';
 import {
   Card, SUITS, Zone, autosave, buildDeck, colorOf, createHistory, createSave, createTable, defineScene, flipCard,
   rankValue, seeded, shuffle,
-} from 'felt';
+} from '@exterkamp/felt';
 import { showCode } from './code';
 import { button, expose, label, slot, standalone } from './kit';
 

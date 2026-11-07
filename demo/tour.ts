@@ -3,7 +3,7 @@ import {
   CARD_HEIGHT, CARD_WIDTH, CardSprite, FanDirection, Rank, Stack, Suit, animatorOf, buildDeck, cardRect,
   createTable, dealCards, defineHand, defineScene, isRed, defineStack, flickCard, flipCard, layHand, loadCardArt, nextPosition,
   orderStack, seeded, shuffle, stackPositions, stackUnder, throwCard, topCardIndex,
-} from 'felt';
+} from '@exterkamp/felt';
 import { showRegions } from './code';
 import { expose, standalone } from './kit';
 

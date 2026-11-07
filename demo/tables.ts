@@ -2,7 +2,7 @@ import './serve';
 import {
   BORDER_PATTERNS, Board, BorderPattern, CARD_HEIGHT, CARD_WIDTH, DISPLAY_FONT, FeltInk, FeltPaint, FrameOptions, Mark, Table, buildDeck, createTable, defineScene,
   border, paintFelt, paintFeltFrame, paintFeltSvg, seeded, shuffle,
-} from 'felt';
+} from '@exterkamp/felt';
 import { showCode } from './code';
 import { button, expose, standalone } from './kit';
 

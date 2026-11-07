@@ -1,10 +1,10 @@
 import './serve';
 import {
   CARD_WIDTH, Card, CardSprite, RIFFLE_HAND_DEPTH, Stack, defineStack, orderStack, riffleShuffle, shuffledDeck,
-} from 'felt';
+} from '@exterkamp/felt';
 import { showCode } from './code';
 import { button, expose, standalone } from './kit';
-import { defineScene } from 'felt';
+import { defineScene } from '@exterkamp/felt';
 
 // A scene: run on its own page (standalone, below) or as one screen of the
 // demo app, which moves between scenes without the page navigating.

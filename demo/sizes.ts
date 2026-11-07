@@ -2,10 +2,10 @@ import './serve';
 import {
   Card, CardSprite, DECK_THEMES, DeckTheme, Rank, Sprite, Suit,
   buildDeck, cardFaceMetrics, loadCardArt,
-} from 'felt';
+} from '@exterkamp/felt';
 import { showCode } from './code';
 import { button, expose, label, standalone } from './kit';
-import { defineScene } from 'felt';
+import { defineScene } from '@exterkamp/felt';
 
 // A scene: run on its own page (standalone, below) or as one screen of the
 // demo app, which moves between scenes without the page navigating.

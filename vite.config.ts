@@ -28,10 +28,10 @@ export default defineConfig({
   publicDir: resolve(__dirname, 'assets'),
   resolve: {
     // The subpath first: these are prefix matches, so the bare name would
-    // otherwise swallow `felt/core` and try to open `src/index.ts/core`.
+    // otherwise swallow `@exterkamp/felt/core` and try to open `src/index.ts/core`.
     alias: {
-      'felt/core': resolve(__dirname, 'src/core/index.ts'),
-      'felt': resolve(__dirname, 'src/index.ts'),
+      '@exterkamp/felt/core': resolve(__dirname, 'src/core/index.ts'),
+      '@exterkamp/felt': resolve(__dirname, 'src/index.ts'),
     },
   },
   // Bound to every interface on purpose: the point of this demo is a card

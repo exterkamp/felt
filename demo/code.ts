@@ -1,11 +1,11 @@
-import type { SceneContext } from 'felt';
+import type { SceneContext } from '@exterkamp/felt';
 
 // The code a demo is running, on the demo.
 //
 // Not copies: each demo's own source, fetched as text, and the parts of it
 // between `// #region Title` and `// #endregion` shown in a panel - so a
 // snippet cannot drift from what the page does. Names the demo imports from
-// 'felt' are picked out, since they are the engine's part.
+// '@exterkamp/felt' are picked out, since they are the engine's part.
 //
 // A "Code" button by the Demos link (bottom left, on a phone) opens it; on a wide screen it starts open
 // beside the board.
@@ -42,10 +42,10 @@ function dedent(lines: string[]): string {
   return lines.map((l) => l.slice(indent)).join('\n');
 }
 
-/** What a source imports from 'felt'. */
+/** What a source imports from '@exterkamp/felt'. */
 function feltNames(source: string): Set<string> {
   const names = new Set<string>();
-  for (const m of source.matchAll(/import\s*(?:type\s*)?\{([^}]*)\}\s*from\s*'felt'/g)) {
+  for (const m of source.matchAll(/import\s*(?:type\s*)?\{([^}]*)\}\s*from\s*'@exterkamp\/felt'/g)) {
     for (const name of m[1].split(',')) {
       const n = name.replace(/^\s*type\s+/, '').split(/\s+as\s+/).pop()!.trim();
       if (n) names.add(n);

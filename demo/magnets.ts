@@ -1,7 +1,7 @@
 import './serve';
 import {
   CARD_HEIGHT, CARD_WIDTH, SUITS, SUIT_COLORS, Suit, buildDeck, createTable, defineScene, flipCard, paintFelt, seeded, shuffle,
-} from 'felt';
+} from '@exterkamp/felt';
 import { showCode } from './code';
 import { button, expose, label, standalone } from './kit';
 

@@ -1,7 +1,7 @@
 import './serve';
 import {
   CASINO_DICE, ChipStack, DISPLAY_FONT, PiecesState, createPieces, defineScene, paintFelt, seeded,
-} from 'felt';
+} from '@exterkamp/felt';
 import { showCode } from './code';
 import { button, expose, label, standalone } from './kit';
 

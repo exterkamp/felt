@@ -1,7 +1,7 @@
 import {
   Board, CARD_HEIGHT, CARD_WIDTH, DISPLAY_FONT, Director, FeltPaint, Scene, SceneContext, animatorOf, fpsMeter,
   paintFelt,
-} from 'felt';
+} from '@exterkamp/felt';
 
 // The two things every demo page paints on its felt: the outline of an empty
 // pile, and a small label. Felt paint (paintFelt), so one picture each is

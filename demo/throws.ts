@@ -1,5 +1,5 @@
 import './serve';
-import { CARD_HEIGHT, CardSprite, buildDeck, createTable, defineScene, flightDuration, seeded, shuffle, throwCard } from 'felt';
+import { CARD_HEIGHT, CardSprite, buildDeck, createTable, defineScene, flightDuration, seeded, shuffle, throwCard } from '@exterkamp/felt';
 import { showCode } from './code';
 import { button, expose, label, slot, standalone } from './kit';
 

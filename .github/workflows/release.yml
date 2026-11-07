@@ -1,0 +1,42 @@
+# Publishes @exterkamp/felt to npm when a version tag is pushed.
+#
+#   npm version patch        # or minor; bumps package.json and tags v0.1.1
+#   git push --follow-tags
+#
+# The tag must match package.json, so a release is always the commit it names.
+# npm is reached by trusted publishing (OIDC): no token lives in the repo once
+# the package's npm settings name this workflow as a trusted publisher. Until
+# then an NPM_TOKEN secret works too. Either way the release carries
+# provenance, which links it on npmjs.com to this run and this commit.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      - name: Tag matches package.json
+        run: |
+          want="v$(node -p "require('./package.json').version")"
+          if [ "$GITHUB_REF_NAME" != "$want" ]; then
+            echo "::error::tag $GITHUB_REF_NAME but package.json says $want"; exit 1
+          fi
+      - run: npm ci
+      - run: npm test
+      # prepare builds dist before the pack.
+      - run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

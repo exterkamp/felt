@@ -4,7 +4,7 @@
 // are made, laid out and moved exactly as there.
 import { run, type Adapter } from './bench-core';
 import './serve';
-import { CardSprite, buildDeck, cardsReady, createBoard } from 'felt';
+import { CardSprite, buildDeck, cardsReady, createBoard } from '@exterkamp/felt';
 
 const W = 560;
 const H = 700;

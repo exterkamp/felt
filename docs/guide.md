@@ -17,7 +17,7 @@ twenty demos, every one of them a phone-sized table.
 
 ```ts
 import { createBoard, CardSprite, loadCardArt, renderCourts, shuffledDeck, throwCard,
-  COURT_PALETTES } from 'felt';
+  COURT_PALETTES } from '@exterkamp/felt';
 
 const board = createBoard({ parent: 'board', width: 480, height: 640, backgroundColor: '#13463a' });
 void loadCardArt(board);                          // suits, backs, fonts - not required first
@@ -304,7 +304,7 @@ felt: a shape in one colour of paint, worn a little by the nap, and an
 ordinary sprite under the cards.
 
 ```ts
-import { paintFelt, paintFeltSvg } from 'felt';
+import { paintFelt, paintFeltSvg } from '@exterkamp/felt';
 
 paintFelt(board, { text: 'BLACKJACK PAYS 3 TO 2', font: DISPLAY_FONT, size: 20, arc: 360 }, { x: 240, y: 104, color: 'yellow' });
 paintFelt(board, { text: 'COME', size: 52 }, { x: 240, y: 195, color: 'red' });
@@ -349,7 +349,7 @@ Scores, counters, clocks and pile labels are **readouts**: text on the board,
 at a board position, that changes cheaply.
 
 ```ts
-import { announce, formatClock, readout, toastsOf } from 'felt';
+import { announce, formatClock, readout, toastsOf } from '@exterkamp/felt';
 
 const score = readout(board, { x: 458, y: 52, align: 'right', size: 30, color: '#ffd166', countUp: 350, pop: true });
 const clock = readout(board, { x: 22, y: 52, align: 'left', format: (ms) => formatClock(ms) });
@@ -418,7 +418,7 @@ flicks. Each distinct look - a green 25 at 34 units, a red die's five - is
 painted once into the atlas and shared.
 
 ```ts
-import { createPieces, CASINO_DICE } from 'felt';
+import { createPieces, CASINO_DICE } from '@exterkamp/felt';
 
 const pieces = createPieces(board, { diameter: 34 });     // the casino set: 1 5 25 100 500 1K 5K
 const bank = pieces.stack({ id: 'you', x: 196, y: 540, chips: [100, 100, 25, 25, 5, 5, 5, 1, 1] });

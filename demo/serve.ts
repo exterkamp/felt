@@ -1,4 +1,4 @@
-import { setCardAssetBase } from 'felt';
+import { setCardAssetBase } from '@exterkamp/felt';
 
 // Where this copy of the demo is served from.
 //

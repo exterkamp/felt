@@ -3,10 +3,10 @@ import {
   BODY_FONT, COURT_PALETTES, Card, CardSprite, CourtPalette, DECK_STOCK, DECK_THEMES,
   DECK_THEME_LABELS, DISPLAY_FONT, DeckTheme, FACE_STYLES, FaceStyle, Rank, SUITS, Sprite, Suit,
   cardFaceMetrics, colorCss, loadCardArt, renderCourts,
-} from 'felt';
+} from '@exterkamp/felt';
 import { showCode } from './code';
 import { button, expose, label as paintLabel, standalone } from './kit';
-import { defineScene } from 'felt';
+import { defineScene } from '@exterkamp/felt';
 
 // A scene: run on its own page (standalone, below) or as one screen of the
 // demo app, which moves between scenes without the page navigating.

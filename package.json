@@ -1,8 +1,20 @@
 {
-  "name": "felt",
+  "name": "@exterkamp/felt",
   "version": "0.1.0",
   "description": "A WebGL2 engine for card games and nothing else: one instanced draw for every card on the table, flat or bent, flipped or thrown.",
   "license": "CC0-1.0",
+  "author": "Shane Exterkamp",
+  "homepage": "https://exterkamp.github.io/felt/",
+  "bugs": "https://github.com/exterkamp/felt/issues",
+  "keywords": [
+    "cards",
+    "card-game",
+    "playing-cards",
+    "webgl2",
+    "solitaire",
+    "poker",
+    "game-engine"
+  ],
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -18,7 +30,11 @@
     "./assets/*": "./assets/*",
     "./package.json": "./package.json"
   },
-  "files": ["dist", "assets", "src", "ATTRIBUTION.md"],
+  "files": [
+    "dist",
+    "assets",
+    "ATTRIBUTION.md"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "npm run typecheck && vitest run",
@@ -35,9 +51,15 @@
     "vite": "^7.0.0",
     "vitest": "^4.1.0"
   },
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/exterkamp/felt.git"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   }
 }
