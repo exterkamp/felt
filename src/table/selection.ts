@@ -81,7 +81,7 @@ export class Selection {
   private readonly highlights: Highlights;
   private readonly lit = new Map<CardSprite, Highlight>();
   private readonly lifted = new Map<CardSprite, Offset>();
-  private targetLights: Highlight[] = [];
+  private targetLights = new Map<Zone, Highlight>();
   private hintLights: Highlight[] = [];
   private dragging?: { cards: readonly CardSprite[]; from: Zone | undefined; real: boolean };
   private refusedDrop?: { cards: readonly CardSprite[]; to: Zone | undefined };
@@ -256,26 +256,33 @@ export class Selection {
     this.hintLights = [];
   }
 
-  /** Cards the table has taken off altogether are not selected any more. */
-  private prune(): void {
+  /** Cards the table has taken off altogether are not selected any more. Answers whether any were. */
+  private prune(): boolean {
     const gone = this.cards.filter((c) => c.isDestroyed || this.table.card(c.card.id) !== c);
     if (gone.length) this.set.remove(gone);
+    return gone.length > 0;
   }
 
-  /** The places lit: where the dragged cards may go, while dragging; else where the selection may. */
+  /**
+   * The places lit: where the dragged cards may go, while dragging; else
+   * where the selection may. A place still lit stays lit, rather than
+   * blinking out and back in at every move on the table.
+   */
   private refreshTargets(): void {
-    for (const h of this.targetLights) h.remove();
-    this.targetLights = [];
+    if (this.prune()) return;   // the change it made has refreshed them
     const d = this.dragging;
-    if (d?.real) {
-      if (!this.dragStyle) return;
-      this.targetLights = legalTargets(d.cards, d.from, this.table.zones)
-        .map((zone) => this.highlights.zone(zone, this.dragStyle!));
-      return;
+    const style = d?.real ? this.dragStyle : this.targetStyle;
+    const zones = !style ? []
+      : d?.real ? legalTargets(d.cards, d.from, this.table.zones)
+      : this.set.empty ? [] : this.targets();
+    const look = style ? this.highlights.look(style) : undefined;
+    const next = new Map<Zone, Highlight>();
+    for (const [zone, h] of this.targetLights) {
+      if (zones.includes(zone) && h.look === look) next.set(zone, h);
+      else h.remove();
     }
-    this.prune();
-    if (!this.targetStyle || this.set.empty) return;
-    this.targetLights = this.targets().map((zone) => this.highlights.zone(zone, this.targetStyle!));
+    for (const zone of zones) if (!next.has(zone)) next.set(zone, this.highlights.zone(zone, style!));
+    this.targetLights = next;
   }
 
   /**
