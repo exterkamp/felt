@@ -80,3 +80,4 @@ export type {
   Accepts, CanTake, DragOptions, FlickRelease, TableDealOptions, HandOptions, MoveCause, MoveOptions, PileOptions, SyncOptions,
   TableMove, TableOptions, TableTap, ZoneRules,
 } from './table/table.js';
+export * from './pieces/index.js';
