@@ -6,7 +6,7 @@ import {
 import { showCode } from './code';
 import { button, expose, standalone } from './kit';
 
-// Three casino layouts, all painted on the felt. Every word, line, box, die
+// Three casino layouts and a parlour table of old patterns, all painted on the felt. Every word, line, box, die
 // and scroll below is a `paintFelt` mark: a shape in one colour of paint, an
 // ordinary sprite under the cards. The cards are only there to be on it.
 
@@ -49,6 +49,102 @@ const DIVIDER = [
 ];
 // #endregion
 
+// #region Old patterns, drawn in code
+// Three designs centuries out of copyright, generated here rather than
+// copied from anyone's file: guilloché, the engraved rosettes of banknotes
+// and share certificates; the Greek key; and seigaiha, the Japanese
+// overlapping waves.
+
+/** Points along a closed curve, as path data. */
+function curve(at: (t: number) => readonly [number, number], steps: number): string {
+  let d = '';
+  for (let i = 0; i <= steps; i++) {
+    const [x, y] = at((i / steps) * Math.PI * 2);
+    d += `${i ? 'L' : 'M'}${x.toFixed(2)} ${y.toFixed(2)}`;
+  }
+  return `${d}Z`;
+}
+
+/**
+ * A guilloché rosette in a 200 x 200 box: strands of one wave, each a little
+ * out of phase with the last, so that between them they weave a net. A band
+ * of sine strands round the rim, spirograph loops inside it, a knot at the
+ * heart.
+ */
+function guilloche(): string[] {
+  const c = 100;
+  const ring = (r: number) => curve((t) => [c + r * Math.cos(t), c + r * Math.sin(t)], 160);
+  const band = (mid: number, amp: number, waves: number, strands: number) =>
+    Array.from({ length: strands }, (_, k) => curve((t) => {
+      const r = mid + amp * Math.sin(waves * t + (k * Math.PI * 2) / strands);
+      return [c + r * Math.cos(t), c + r * Math.sin(t)];
+    }, waves * 24));
+  // A circle carrying a smaller one round it backwards: loops = m + 1.
+  const loops = (big: number, small: number, m: number, strands: number) =>
+    Array.from({ length: strands }, (_, k) => curve((t) => {
+      const phase = (k * Math.PI * 2) / (strands * (m + 1));
+      return [c + big * Math.cos(t) + small * Math.cos(m * t + phase * m),
+        c + big * Math.sin(t) - small * Math.sin(m * t + phase * m)];
+    }, (m + 1) * 30));
+  return [ring(98), ring(94), ...band(82, 8, 24, 6), ring(70),
+    ...loops(42, 24, 11, 4), ...band(14, 6, 8, 3)];
+}
+
+/** A guilloché band in a `length` x 24 box: strands crossing and recrossing a line. */
+function guillocheBand(length: number, waves: number): string[] {
+  return [0, 1, 2, 3].map((k) => {
+    let d = '';
+    for (let x = 0; x <= length; x += 1) {
+      const y = 12 + 9 * Math.sin((x / length) * waves * Math.PI * 2 + (k * Math.PI) / 2)
+        * Math.cos((x / length) * Math.PI * 2 * 0.5 - Math.PI / 2) ** 0.4;
+      d += `${x ? 'L' : 'M'}${x} ${y.toFixed(2)}`;
+    }
+    return d;
+  });
+}
+
+/**
+ * A Greek key border `units` keys long, in a box `units * 10` x 12: one line
+ * that winds in and back out of every key without crossing itself, between
+ * two rails.
+ */
+function greekKey(units: number): string[] {
+  let d = 'M0 10';
+  for (let i = 0; i < units; i++) {
+    const x = i * 10;
+    d += `V2H${x + 8}V8H${x + 4}V6H${x + 6}V4H${x + 2}V10H${x + 10}`;
+  }
+  const w = units * 10;
+  return [d, `M0 0H${w}`, `M0 12H${w}`];
+}
+
+/**
+ * Seigaiha across a whole area: rows of fans of rings, each row tucked
+ * behind the one in front of it. Each fan cuts away what it covers before
+ * it is drawn, so the pattern is one paint with no overlaps in it.
+ */
+const seigaiha = (width: number, height: number, r: number, rings = 4): Mark => ({
+  width, height, key: `seigaiha-${width}x${height}-${r}-${rings}`,
+  draw(pen) {
+    pen.lineWidth = 1.4;
+    for (let row = 0, y = -r; y <= height + r; row++, y += r / 2) {
+      for (let x = row % 2 ? r : 0; x <= width + r; x += r * 2) {
+        pen.globalCompositeOperation = 'destination-out';
+        pen.beginPath();
+        pen.arc(x, y, r, 0, Math.PI * 2);
+        pen.fill();
+        pen.globalCompositeOperation = 'source-over';
+        for (let k = 1; k <= rings; k++) {
+          pen.beginPath();
+          pen.arc(x, y, (r * (k - 0.35)) / rings, 0, Math.PI * 2);
+          pen.stroke();
+        }
+      }
+    }
+  },
+});
+// #endregion
+
 /** A whole SVG document, in its own two colours. */
 const MEDALLION = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
   <circle cx="50" cy="50" r="46" fill="none" stroke="#d4a93c" stroke-width="2.4"/>
@@ -59,7 +155,7 @@ const MEDALLION = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"
 
 /** What a layout paints with: a mark at a place, in a paint. */
 interface Painter {
-  (mark: Mark, x: number, y: number, color?: FeltInk, angle?: number): void;
+  (mark: Mark, x: number, y: number, color?: FeltInk, angle?: number, alpha?: number): void;
   text(text: string, x: number, y: number, size: number, color?: FeltInk, more?: Record<string, unknown>): void;
   box(x: number, y: number, width: number, height: number, color?: FeltInk, more?: Record<string, unknown>): void;
   /** Takes a mark made later (a loading SVG) as part of this table. */
@@ -216,6 +312,37 @@ const craps: Layout = (paint) => {
 };
 // #endregion
 
+// #region Parlour: the old patterns - seigaiha, Greek key, guilloché
+const parlour: Layout = (paint, table) => {
+  // Seigaiha the whole cloth over, faint, as if woven into it.
+  paint(seigaiha(W, H, 26), CX, H / 2, 'cream', 0, 0.1);
+  // A Greek key frame: a band down each side, and across the ends between them.
+  const key = (units: number) => ({ path: greekKey(units), viewBox: [units * 10, 12], width: units * 10 * 1.4, stroke: 1.4 });
+  paint(key(30), CX, 20, 'gold');
+  paint(key(30), CX, H - 20, 'gold', 180);
+  paint(key(47), 20, H / 2, 'gold', 90);
+  paint(key(47), W - 20, H / 2, 'gold', 270);
+  for (const [x, y] of [[20, 20], [W - 20, 20], [20, H - 20], [W - 20, H - 20]]) {
+    paint({ shape: 'rect', width: 17, height: 17, stroke: 1.4 }, x, y, 'gold');
+    paint({ shape: 'rect', width: 7, height: 7, stroke: 0 }, x, y, 'gold', 45);
+  }
+  // Guilloché: the rosette, a band either side of the words, a small one per spot.
+  paint({ path: guilloche(), viewBox: [200, 200], width: 210, stroke: 0.7 }, CX, 190, 'cream');
+  paint.text('PARLOUR', CX, 330, 26, 'gold', { spacing: 0.3 });
+  paint({ path: guillocheBand(360, 9), viewBox: [360, 24], width: 360, stroke: 0.8 }, CX, 360, 'cream');
+  paint.text('THE HOUSE PLAYS AT ITS OWN RISK', CX, 384, 9, 'cream', { spacing: 0.3 });
+  const spots = [0, 1, 2, 3].map((i) => {
+    const x = CX + (i - 1.5) * 104;
+    const y = 520;
+    paint({ path: guilloche(), viewBox: [200, 200], width: 96, stroke: 0.5 }, x, y, 'gold');
+    // Tall enough for the pair dealt to it, fanned down.
+    paint.box(x, y + 9, CARD_WIDTH + 14, CARD_HEIGHT + 32, 'cream', { radius: 6, stroke: 1.5 });
+    return table.pile({ id: `spot-${i}`, x, y, faceUp: true, fan: 'down', step: 18 });
+  });
+  return dealRounds(table, spots, 2);
+};
+// #endregion
+
 const CORNERS = [0, 90, 180, 270].map((angle, i) => ({
   x: i === 0 || i === 3 ? 52 : W - 52, y: i < 2 ? 52 : H - 52, angle,
 }));
@@ -238,6 +365,7 @@ const LAYOUTS = {
   blackjack: { layout: blackjack, felt: '#13463a' },
   baccarat: { layout: baccarat, felt: '#173a5c' },
   craps: { layout: craps, felt: '#17573a' },
+  parlour: { layout: parlour, felt: '#4a1621' },
 };
 
 export const scene = defineScene({
@@ -251,8 +379,8 @@ export const scene = defineScene({
     let showing: keyof typeof LAYOUTS = 'blackjack';
 
     // #region A painter: paintFelt with a place and a colour
-    const paint = ((mark, x, y, color, angle) => {
-      marks.push(paintFelt(board, mark, { x, y, color, angle }));
+    const paint = ((mark, x, y, color, angle, alpha) => {
+      marks.push(paintFelt(board, mark, { x, y, color, angle, alpha }));
     }) as Painter;
     paint.text = (text, x, y, size, color = 'white', more = {}) =>
       paint({ text, font: DISPLAY_FONT, weight: 700, size, spacing: 0.1, ...more } as Mark, x, y, color);

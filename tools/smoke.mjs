@@ -677,7 +677,7 @@ const painted = JSON.parse(await evaluate(`(async () => {
     return n;
   };
   const out = {};
-  for (const name of ['blackjack', 'baccarat', 'craps']) {
+  for (const name of ['blackjack', 'baccarat', 'parlour', 'craps']) {   // craps last: its paint is sampled below
     f.show(name);
     await wait(1500);
     const marks = f.marks();
@@ -691,11 +691,13 @@ const painted = JSON.parse(await evaluate(`(async () => {
 })()`));
 check(['blackjack', 'baccarat', 'craps'].every(n => painted[n].drawn && painted[n].under && painted[n].marks > 15),
   `blackjack, baccarat and craps are painted, under the cards and out of the way of drags (${['blackjack', 'baccarat', 'craps'].map(n => painted[n].marks).join(', ')} marks)`);
-check(painted.blackjack.cards === 52 && painted.baccarat.cards === 52, 'and the card tables deal onto their layouts');
+check(painted.parlour.drawn && painted.parlour.under && painted.parlour.marks > 15,
+  `the parlour table is painted in old patterns: guilloché, Greek key, seigaiha (${painted.parlour.marks} marks)`);
+check(painted.blackjack.cards === 52 && painted.baccarat.cards === 52 && painted.parlour.cards === 52, 'and the card tables deal onto their layouts');
 check(painted.paint.red > 200 && painted.paint.yellow > 200 && painted.paint.white > 200,
   `the paint is the colour asked for: red, yellow and white on the craps layout (${painted.paint.red}/${painted.paint.yellow}/${painted.paint.white} px)`);
-check(Math.max(...['blackjack', 'baccarat', 'craps'].map(n => painted[n].pages)) <= 3,
-  `and every layout fits the atlas in ${Math.max(...['blackjack', 'baccarat', 'craps'].map(n => painted[n].pages))} page(s)`);
+const layoutPages = Math.max(...['blackjack', 'baccarat', 'craps', 'parlour'].map(n => painted[n].pages));
+check(layoutPages <= 3, `and every layout fits the atlas in ${layoutPages} page(s)`);
 // --- magnetic stacks: flicked near its suit, it is drawn in -----------------
 console.log('\nmagnetic stacks');
 await open('magnets.html', '__felt?.deck?.().length === 52');

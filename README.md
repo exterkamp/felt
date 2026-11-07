@@ -198,7 +198,10 @@ await paintFeltSvg(board, medallionSvg, { width: 46, height: 46 }, { x: 240, y: 
   instead. Words in a font still loading are laid out again when it arrives.
   `board.setBackground()` changes the cloth under it all.
 
-See the Painted tables demo: blackjack, baccarat and craps.
+See the Painted tables demo: blackjack, baccarat and craps, and a parlour
+table of old patterns generated in code - a guilloché rosette and band, a
+Greek key border and seigaiha waves - which need no artwork and so no
+licence.
 
 ## From phaser-card-engine
 
