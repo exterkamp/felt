@@ -101,7 +101,7 @@ console.log(`smoking ${host}`);
 await send('Page.navigate', { url: `${host}/` });
 await sleep(700);
 const tiles = JSON.parse(await evaluate(`JSON.stringify([...document.querySelectorAll('a.demo')].map(a => a.href))`));
-check(tiles.length === 18, `the home screen lists eighteen demos (${tiles.length})`);
+check(tiles.length === 19, `the home screen lists nineteen demos (${tiles.length})`);
 let reachable = 0;
 let wayBack = 0;
 let boards = 0;
@@ -1063,6 +1063,75 @@ check(seatsRun.late === 0, `with 400 ms latency nothing arrives late: commands a
 check(seatsRun.boards === 2 && seatsRun.members === 2 && seatsRun.drawn.every(n => n >= 10),
   `two boards on one engine, both drawing (${seatsRun.drawn.join(', ')} instances)`);
 
+// --- readouts, toasts and announcements -------------------------------------
+console.log('\nreadouts & toasts');
+await open('readouts.html', '!!window.__felt?.score && document.fonts.status === "loaded"');
+const ro = JSON.parse(await evaluate(`(async () => {
+  const f = __felt; const b = f.board; const wait = (ms) => new Promise(r => setTimeout(r, ms));
+  const settle = async () => { for (let i = 0; i < 40 && b.tweens.count; i++) await wait(50); await wait(100); };
+  /** The score's box on a fresh frame: its pixels, and how many are its gold. */
+  const box = () => {
+    const c = b.snapshotCanvas(); const r = c.width / b.width; const s = f.score.bounds;
+    const x = Math.floor((b.width - 200) * r), y = Math.floor(s.y * r), w = Math.ceil(178 * r), h = Math.ceil(s.height * r);
+    const px = c.getContext('2d').getImageData(x, y, w, h).data;
+    let gold = 0;
+    for (let i = 0; i < px.length; i += 4) if (px[i] > 200 && px[i + 1] > 170 && px[i + 2] < 140) gold++;
+    return { px, gold };
+  };
+  f.score.set(1, { animate: false, pop: false }); await settle();
+  const one = box();
+  f.score.set(88888, { animate: false, pop: false }); await settle();
+  const many = box();
+  let changed = 0;
+  for (let i = 0; i < one.px.length; i += 4) if (Math.abs(one.px[i] - many.px[i]) + Math.abs(one.px[i + 1] - many.px[i + 1]) > 60) changed++;
+  // Hammered: five hundred values, every digit, and the atlas does not grow.
+  const before = { pages: b.atlas.pages.length, paints: b.atlas.paints, glyphs: f.glyphs.size };
+  for (let i = 0; i < 500; i++) f.score.set(i * 7919, { animate: false, pop: false });
+  await settle();
+  const after = { pages: b.atlas.pages.length, paints: b.atlas.paints, glyphs: f.glyphs.size, text: f.score.text };
+  // A toast comes, sits over the board, and goes.
+  const rect = b.canvas.getBoundingClientRect();
+  const handle = f.toasts.show('Smoke toast', { duration: 400 });
+  let shown = null;
+  for (let t = performance.now(); performance.now() - t < 3000 && !shown; await wait(30)) {
+    const el = handle.element;
+    if (el && Number(el.style.opacity) > 0.95) { const r = el.getBoundingClientRect(); shown = { l: r.left, t: r.top, r: r.right, b: r.bottom }; }
+  }
+  let gone = false;
+  for (let t = performance.now(); performance.now() - t < 4000 && !gone; await wait(50)) {
+    gone = handle.phase === 'gone' && !document.querySelector('[data-toast="' + handle.id + '"]');
+  }
+  const inside = !!shown && shown.l >= rect.left && shown.r <= rect.right && shown.t >= rect.top && shown.b <= rect.bottom;
+  // A float rises off the board point it was given.
+  const fl = f.toasts.float('+10', 380, 300, { duration: 3000 });
+  await wait(60);
+  const fr = fl.element.getBoundingClientRect();
+  const want = { x: rect.left + 380 / b.width * rect.width, y: rect.top + 300 / b.height * rect.height };
+  const floatOff = Math.abs((fr.left + fr.right) / 2 - want.x);
+  fl.dismiss();
+  // The live region hears it: a polite burst, and an assertive one at once.
+  const announcer = f.announcer;
+  announcer.announce('Smoke says hello');
+  announcer.announce('and goodbye');
+  let polite = '';
+  for (let t = performance.now(); performance.now() - t < 3000 && !polite.includes('hello'); await wait(30)) polite = announcer.politeRegion.textContent;
+  document.querySelector('#stuck').click();
+  let assertive = '';
+  for (let t = performance.now(); performance.now() - t < 3000 && !assertive.includes('No moves'); await wait(30)) assertive = announcer.assertiveRegion.textContent;
+  const regions = document.querySelectorAll('[aria-live]').length;
+  return JSON.stringify({ changed, oneGold: one.gold, manyGold: many.gold, before, after, shown, inside, gone, floatOff,
+    polite, assertive, regions, role: announcer.politeRegion.getAttribute('role'), log: document.querySelector('#said').textContent });
+})()`));
+check(ro.changed > 200 && ro.manyGold > ro.oneGold * 2 && ro.oneGold > 20,
+  `a readout's pixels change with its value, in its own ink (${ro.changed} px changed; gold ${ro.oneGold} -> ${ro.manyGold})`);
+check(ro.after.pages === ro.before.pages && ro.after.paints - ro.before.paints <= 12 && ro.after.glyphs <= 48,
+  `hammering the score 500 times does not grow the atlas (${ro.before.pages} -> ${ro.after.pages} pages, ${ro.after.paints - ro.before.paints} new paints, ${ro.after.glyphs} glyphs in use; shows ${ro.after.text})`);
+check(ro.inside && ro.gone, `a toast appears over the board and goes away (${ro.shown ? 'shown inside the canvas' : 'never shown'}, ${ro.gone ? 'gone' : 'still there'})`);
+check(ro.floatOff < 3, `a float rises off the board point it was given (${ro.floatOff.toFixed(1)} px off)`);
+check(ro.polite.includes('Smoke says hello. and goodbye') && ro.assertive.includes('No moves left') && ro.regions === 2 && ro.role === 'status',
+  `the page's one live region hears it: polite coalesced ("${ro.polite.trim()}"), assertive at once ("${ro.assertive.trim()}")`);
+check(ro.log.includes('Smoke says hello'), 'and the page logs what was said, for sighted testers');
+
 // --- the demo as one page: scenes, not navigations --------------------------
 console.log('\nthe demo app');
 await send('Page.navigate', { url: `${host}/` });
@@ -1086,7 +1155,7 @@ const spa = JSON.parse(await evaluate(`(async () => {
     while (!(app.director.scene === 'index' && document.querySelector('a.demo')) && performance.now() - back < 5000) await wait(20);
     await wait(150);
     if (document.querySelectorAll('canvas').length || app.engine.memberCount || app.engine.updateCount
-      || document.querySelector('.felt-fps')) leftovers++;
+      || document.querySelector('.felt-fps') || document.querySelector('.felt-toasts')) leftovers++;
   }
   // Again, warm: the art is the engine's from the first visit.
   const art = app.engine.services.get('art-store'); const known = art.report().length;

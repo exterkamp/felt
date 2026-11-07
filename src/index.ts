@@ -98,3 +98,18 @@ export type {
 } from './table/history.js';
 export { GameSave, SAVE_FORMAT, autosave, createSave, decodeSave, encodeSave, memoryStore } from './table/save.js';
 export type { AutosaveOptions, GameSaveOptions, SaveProblem, SaveRead, SaveStore, SavedGame } from './table/save.js';
+
+// On-board readouts, toasts over the table and screen-reader announcements.
+export { Readout, readout } from './ui/readout.js';
+export type { ReadoutHost, ReadoutOptions } from './ui/readout.js';
+export { GlyphCache, alignOffset, cssFont, glyphsOf, layoutLine, lineHeightOf } from './ui/glyphs.js';
+export type { Glyph, GlyphCacheOptions, GlyphHost, GlyphPlace, GlyphStyle, LineLayout } from './ui/glyphs.js';
+export { formatClock, formatNumber, parseColor } from './ui/format.js';
+export type { ClockFormat, NumberFormat } from './ui/format.js';
+export { Toaster, toastsOf } from './ui/toast.js';
+export type { FloatOptions, ToastHandle, ToastOptions, ToasterOptions } from './ui/toast.js';
+export { ToastQueue, durationFor } from './ui/toast-queue.js';
+export type { ToastPhase, ToastPlace, ToastPolicy, ToastSpec, ToastState } from './ui/toast-queue.js';
+export { AnnounceQueue, Announcer, announce, announcerOf } from './ui/announce.js';
+export type { AnnounceOptions, AnnouncePolicy, Announcement, Politeness } from './ui/announce.js';
+export { prefersReducedMotion } from './ui/motion.js';

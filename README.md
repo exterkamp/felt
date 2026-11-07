@@ -316,6 +316,72 @@ See the Painted tables demo: blackjack, baccarat and craps; a parlour table
 of old patterns generated in code - a guilloché rosette and band, a Greek
 key frame and seigaiha waves; and every border.
 
+## Readouts, toasts and announcements
+
+Scores, counters, clocks and pile labels are **readouts**: text on the board,
+at a board position, that changes cheaply.
+
+```ts
+import { announce, formatClock, readout, toastsOf } from 'felt';
+
+const score = readout(board, { x: 458, y: 52, align: 'right', size: 30, color: '#ffd166', countUp: 350, pop: true });
+const clock = readout(board, { x: 22, y: 52, align: 'left', format: (ms) => formatClock(ms) });
+const stock = readout(board, { x: 100, y: 400, depth: -1, format: (n) => `Stock ${n}` });   // under the cards
+ctx.every(250, () => clock.set(ctx.engine.time - started));
+score.set(score.value as number + 15);
+
+toastsOf(board).show('Nice!', { tone: 'good' });                       // a banner, top
+toastsOf(board).show("Player 2's turn", { place: 'center' });
+toastsOf(board).float('+10', card.x, card.y - 42);                       // rises off a board point
+announce('You moved the seven of hearts to column three.');            // said by a screen reader
+```
+
+- **Readouts are glyphs.** Each character of a style is painted once, in
+  white, into a small atlas region (a board service, `glyphsOf(board)`,
+  counting uses); a line is a row of sprites showing them, tinted to its
+  colour, in the same draw call as the cards. Changing the value repaints
+  nothing - measured: a score hammered 500 times through every digit made
+  **8 new paints and no new atlas page** (one per glyph it had not shown
+  before), and a second 500 made none. `board.text` would have made a region
+  per distinct string. The cost is kerning - glyphs sit on their advances -
+  which numbers (tabular by default) do not miss and short labels barely do.
+- `format` is a function or `formatNumber` options (`group`, `decimals`,
+  `sign: 'always'` for `+15`, `pad`, `prefix`/`suffix`); `formatClock` gives
+  `mm:ss` (`h:mm:ss` from an hour, `round: 'ceil'` for countdowns, `tenths`).
+  `align` left/center/right anchors the line at `x`; `valign` its `y`.
+  `depth` puts it under the cards (below 0) or over them. `countUp` (ms)
+  eases a number to its new value; `pop` scales it up and back on a change;
+  both stop under `prefers-reduced-motion`. At rest every glyph's edge is on
+  a canvas pixel, painted at the board's pixel ratio, so it is drawn 1:1. A
+  web font still loading is measured and painted again when it arrives.
+- **Toasts are DOM**, in a layer pinned over the canvas at board units and
+  the scale `fit()` showed the canvas at - re-aligned on every resize, fit and
+  rebuilt canvas, so a float at (x, y) rises off whatever is at (x, y). A
+  toast is a new string nearly every time, which is what the atlas is worst
+  at; in the DOM it is a text node, laid out crisply at the size it is shown,
+  styled with CSS (`.felt-toast--good`), never in the atlas. The trade: toasts
+  are not in `board.snapshot()` and are always over the cards. They run on
+  the board's frame clock (paused with the page, gone with the board).
+- **Toast policy** (`ToastQueue`, pure): top and bottom stack three, more
+  wait (oldest first, the stalest dropped beyond four); the centre shows one
+  at a time; floats are never queued (past twelve the oldest goes early). The
+  same text (or `key`) again while it is up counts onto it ("Nice! ×3") and
+  restarts its time. `urgent` jumps the queue and pushes the oldest off.
+  Durations follow the length of the message (`durationFor`), or `Infinity`
+  until dismissed; a tap dismisses. Under reduced motion they fade without
+  moving.
+- **Announcements**: one pair of ARIA live regions per page (an engine
+  service, `announcerOf(engine)`): two regions talk over each other, one made
+  early is in the document before its first message, and a scene change does
+  not cut "You win!" off. Polite messages are coalesced into one sentence
+  after a quiet 250 ms (at most a second); a `key` keeps only the newest
+  (`{ key: 'score' }`); the same words twice in a burst are said once;
+  `politeness: 'assertive'` goes at the next frame. Banners announce
+  themselves politely by default (`announce: false`, `'assertive'`, or other
+  words to say); floats do not. `announcer.onAnnounce(fn)` feeds a visible log.
+
+See the Readouts & toasts demo.
+
 ## From phaser-card-engine
 
 The names were kept wherever the idea survived, so a port is mostly deleting
