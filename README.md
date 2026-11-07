@@ -381,6 +381,72 @@ announce('You moved the seven of hearts to column three.');            // said b
   words to say); floats do not. `announcer.onAnnounce(fn)` feeds a visible log.
 
 See the Readouts & toasts demo.
+## Pieces that are not cards
+
+Chips, a dealer button, dice and a cribbage board - drawn by the engine,
+on the same board and in the same instanced draw as the cards. Each piece
+is a `Node`: positioned, depth-sorted with the cards, picked through the
+lens, lifted and swung when dragged, and moved by the same throws and
+flicks. Each distinct look - a green 25 at 34 units, a red die's five - is
+painted once into the atlas and shared.
+
+```ts
+import { createPieces, CASINO_DICE } from 'felt';
+
+const pieces = createPieces(board, { diameter: 34 });     // the casino set: 1 5 25 100 500 1K 5K
+const bank = pieces.stack({ id: 'you', x: 196, y: 540, chips: [100, 100, 25, 25, 5, 5, 5, 1, 1] });
+const bet = pieces.stack({ id: 'bet', x: 240, y: 446 });
+const pot = pieces.stack({ id: 'pot', x: 240, y: 344 });
+await pieces.pay(bank, bet, 15);        // the fewest chips that make 15, breaking a 25 if it must
+await pieces.collect([bet], pot);       // every bet into the pot
+await pieces.move(pot, bank);           // and the pot to the winner
+pieces.draggable();                     // pick up a chip and the ones on it; drop or flick them
+
+const button = pieces.token({ label: 'D', x: 300, y: 228 });
+await button.moveTo(378, 302);
+
+const dice = [pieces.die({ style: CASINO_DICE }), pieces.die({ style: CASINO_DICE })];
+const [a, b] = await pieces.roll(dice, { seed: 1042, from, to });   // the seed's roll, not the animation's
+
+const crib = pieces.pegBoard({ x: 240, y: 70, colors: ['#d23a33', '#2f7fd1'] });
+await crib.peg(0, 5);                   // the back peg leapfrogs the front one, five holes on
+
+const saved = pieces.state();           // plain data: stacks, tokens, dice, pegs
+pieces.restore(saved);
+```
+
+- **Chips** are their denomination: a stack is a list of values, bottom
+  first, and its worth is their sum. The arithmetic is pure and in node -
+  `makeChange`, `payFrom` (exact change from the stack if any chips add
+  up, the fewest that do; otherwise the smallest chip whose change lets it
+  pay is broken first), `colorUp`, `stackValue`, `exactChips` - over a
+  `ChipSet` of any denominations, not only the casino's.
+- **A stack looks like one** from straight above: each chip a thickness
+  further up the board than the one under it, so every chip's rim shows as a
+  sliver, edge spots and all; nudged and turned a little from the stack's
+  seed (`chipStackLayout`: the same mess on every screen, and a chip added
+  never moves the others), twenty to a column. Moves change the stacks at
+  once and fly the chips; `split`, `merge`, `breakChip` and `colorUp` too.
+- **Tokens**: a disc or a pill with a label - `D`, `SB`, `PASS` - or a plain
+  player colour. `moveTo` slides one, lifted a little; dragged it can be
+  flicked.
+- **Dice** are real cubes: six faces drawn as small cards set on the cube,
+  only those turned towards the camera drawn, one shadow cast on the felt.
+  The result is decided first - a value, or `rollDice(seed)` - and the
+  tumble (`dieTumble`) is worked backwards from the resting orientation, so
+  it cannot land on anything else and never sinks a corner into the table.
+  Pips or numbers; ivory or the casino's red.
+- **The peg board**: a lane of 121 holes per player in fives, out and back,
+  start holes and the game hole. `peg(player, n)` changes the state at once
+  (`scorePegs`) and hops the back peg over the front one into its hole.
+
+Why not zones of the Table? A zone owns cards - identified, ordered, face up
+or down, synced by id - and its rules are about cards. Two red fives are the
+same chip, a stack is a quantity, and what a dealer does with one has no
+card counterpart; dice and a peg board are not containers at all. So
+`Pieces` is parallel to the Table, in its words (`stack` for `pile`,
+`move`, `draggable`, `on('move')`, `state()`/`restore()`), and neither
+needs the other. See the Chips, dice and pegs demo.
 
 ## From phaser-card-engine
 
@@ -532,7 +598,7 @@ The smoke test drives every demo through CDP and checks what is on screen
 against what the geometry asked for: one draw call for the stacks page, the
 card a finger lands on is the one drawn in front, a real pointer drag between
 piles, all twelve courts rendered, messy angles settled and bounded, hold'em's
-deal order and final counts, the riffle bending all 52 without ever drawing the
+deal order and final counts, chips in their colours and dice on their faces, the riffle bending all 52 without ever drawing the
 pile over the packets, hands re-fanning without spinning, throws leaving the felt - and that a still board draws no frames.
 
 ## What is next

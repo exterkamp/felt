@@ -62,6 +62,7 @@ export default defineConfig({
         shuffle: resolve(__dirname, 'demo/shuffle.html'),
         faces: resolve(__dirname, 'demo/faces.html'),
         readouts: resolve(__dirname, 'demo/readouts.html'),
+        pieces: resolve(__dirname, 'demo/pieces.html'),
       },
     },
   },

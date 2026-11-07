@@ -113,3 +113,4 @@ export type { ToastPhase, ToastPlace, ToastPolicy, ToastSpec, ToastState } from 
 export { AnnounceQueue, Announcer, announce, announcerOf } from './ui/announce.js';
 export type { AnnounceOptions, AnnouncePolicy, Announcement, Politeness } from './ui/announce.js';
 export { prefersReducedMotion } from './ui/motion.js';
+export * from './pieces/index.js';
