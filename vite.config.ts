@@ -7,6 +7,18 @@ import { resolve } from 'node:path';
 // browser is exactly the path deckThemePath returns - which is the contract
 // this package asks of a consumer, tested here by being a consumer.
 export default defineConfig({
+  // The bench (demo/bench.html) posts its results here, so a phone's run
+  // lands in the dev server's log.
+  plugins: [{
+    name: 'felt-bench-log',
+    configureServer(server) {
+      server.middlewares.use('/__bench', (req, res) => {
+        let body = '';
+        req.on('data', (c) => { body += c; });
+        req.on('end', () => { console.log(`[bench] ${body}`); res.end('ok'); });
+      });
+    },
+  }],
   root: 'demo',
   // `/` for the dev server and for `npm run demo:serve`; the project path
   // when GitHub Pages builds it, where the site is not at the root of a

@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>felt — bench</title>
+    <style>
+      html, body { margin: 0; background: #0b2119; color: #cfead0; font-family: system-ui, sans-serif; }
+      body { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; padding: 0.5rem; }
+      #board { width: min(560px, 100%); aspect-ratio: 560 / 700; }
+      #board canvas { width: 100% !important; height: auto !important; }
+      pre { font-size: 0.7rem; white-space: pre-wrap; max-width: 560px; margin: 0; }
+    </style>
+  </head>
+  <body>
+    <pre id="out"></pre>
+    <div id="board"></div>
+    <script type="module" src="./bench.ts"></script>
+  </body>
+</html>

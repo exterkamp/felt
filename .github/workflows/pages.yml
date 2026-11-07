@@ -1,0 +1,58 @@
+# The demo, published to GitHub Pages.
+#
+# The site is not at the root of a host - it lives under /felt/ -
+# which is the whole reason DEMO_BASE exists. Vite rewrites the script and
+# stylesheet URLs from it, demo/serve.ts hands the same value to the engine so
+# the card art moves with the pages, and every link between pages is relative
+# so neither has to know where it ended up.
+name: demo
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# What deploy-pages needs: id-token to prove the run, pages to publish.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time, and a newer push wins - the site only ever shows the
+# tip of main, so a queued older build is a build nobody wants.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      # The typecheck and the unit tests, as a gate. Not the smoke checks:
+      # those drive a real browser against a running server, which is a lot of
+      # moving parts to put between a commit and a demo page. They are a
+      # `npm run smoke` away on any machine that has the demo up.
+      - run: npm test
+      - run: npm run demo:build
+        env:
+          DEMO_BASE: /felt/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: demo-dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

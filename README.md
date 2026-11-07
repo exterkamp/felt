@@ -8,7 +8,12 @@ courts, decks, throws, deals and riffles, drawn by a renderer that
 only ever has to draw cards. Every card on the table is one instance of one
 instanced draw call, a card can lift, tip, roll and bend because it is a real
 two-sided surface in a real (optional) perspective, and a board that nothing
-is moving on draws nothing at all.
+is moving on draws nothing at all. On top of that sit the things a game needs:
+a Table of zones with rules, tap-to-move and highlights, undo and saves,
+readouts and toasts, chips, dice and a peg board, and paint for the felt.
+
+**Try it: [exterkamp.github.io/felt](https://exterkamp.github.io/felt/)** -
+twenty demos, every one of them a phone-sized table.
 
 ```ts
 import { createBoard, CardSprite, loadCardArt, renderCourts, shuffledDeck, throwCard,
@@ -30,8 +35,11 @@ await throwCard(board, cards[0], { x: 240, y: 320 }, { arc: 28 });
 | `src/runtime/` | `Engine` (the page's one loop, clock, fixed steps, lifecycle and services), `Clock` (`RafClock`, `ManualClock`), `PageLifecycle`, `Scene` and `Director`, `Disposables`, `Simulation` (deterministic game state for multiplayer). |
 | `src/gl/` | `Renderer` (one instanced program for every card and sprite), `Atlas` (every picture on a few 2048² layers of one texture array), `lens.ts` (the projection, written once in TypeScript and once in GLSL). |
 | `src/scene/` | `Board` (canvas, pixel ratio, fit, input, the sleep-when-still loop), `Node` and `Sprite`, `Tweens` with Phaser's config shape and ease names. |
-| `src/art/` | `CardSprite`, the face and back painters, suit pips, the court renderer and its worker. |
+| `src/art/` | `CardSprite`, the card sheets, the face and back painters, suit pips, the court renderer and its worker; `paintFelt` and the running borders. |
 | `src/play/` | `throwCard`, `dealCards`, `layHand`, `orderStack`, `flipCard`, `riffleShuffle`, `flickCard`. |
+| `src/table/` | The `Table` - zones that own their cards, moves, rules, drag and flick, `sync` - and what builds on it: selection, tap-to-move and highlights; table state, undo history and saves. |
+| `src/ui/` | Readouts drawn on the board, toasts over it, and screen-reader announcements. |
+| `src/pieces/` | Chips and chip stacks, tokens, dice and a cribbage peg board. |
 
 ## Why not Phaser
 
@@ -62,6 +70,25 @@ the cards exactly under an opaque one are skipped). A still board draws **0**
 frames. On the stress page, 4160 cards all moving every frame cost **2.5 ms**
 of CPU a frame, flat or in 3D. A cold start is ready in about 0.6 s, and a
 load with the courts kept from the last visit in about 0.2 s.
+
+**The bench** (`demo/bench.html`) runs the same table on both engines - the
+same cards, the same layout, every card moved every frame - and times every
+animation-frame callback in the page, so neither engine is measured by its
+own accounting. Its twin lives on phaser-card-engine's `bench` branch.
+Headless Chrome on SwiftShader, on a busy machine - so the frame rates are the
+software rasteriser's and left out; the JavaScript is the engines':
+
+| cards | making them (felt / Phaser) | JS a frame, all moving, median | JS heap |
+| ---: | ---: | ---: | ---: |
+| 52 | - / - | 0.4 / 1.1 ms | 12 / 35 MB |
+| 208 | 3 / 417 ms | 0.3 / 2.4 ms | 9 / 36 MB |
+| 520 | 10 / 632 ms | 0.5 / 5.6 ms | 9 / 38 MB |
+| 1040 | 38 / 1561 ms | 0.9 / 18.1 ms | 9 / 43 MB |
+| 2080 | 62 / 2330 ms | 1.5 / 60.2 ms | 11 / 54 MB |
+
+From navigation to 52 cards drawn: 2.3 s against 7.7 s. Sitting still, felt
+spends under 1 ms of JavaScript a second at every size (it draws nothing);
+Phaser draws every frame regardless.
 
 ## Flat or 3D: the lens
 
@@ -448,32 +475,6 @@ card counterpart; dice and a peg board are not containers at all. So
 `move`, `draggable`, `on('move')`, `state()`/`restore()`), and neither
 needs the other. See the Chips, dice and pegs demo.
 
-## From phaser-card-engine
-
-The names were kept wherever the idea survived, so a port is mostly deleting
-`this.root` and `scene`:
-
-| phaser-card-engine | felt |
-| --- | --- |
-| `createBoard({ scene })`, `boardRoot(this)` | `createBoard({...})` - no scene, no root |
-| `preloadCardArt(this, ...)` in `preload` | `loadCardArt(board, ...)`, any time (alias `preloadCardArt`) |
-| `new CardSprite(this, card, style)` | `new CardSprite(board, card, style)` - same `CardStyle` |
-| `orderStack(root, sprites, stack, base)` | `orderStack(sprites, stack, base)` |
-| `layHand(this, root, sprites, hand, opts)` | `layHand(board, sprites, hand, opts)` |
-| `throwCard(this, sprite, target, opts)` | `throwCard(board, sprite, target, opts)` + `arc` |
-| `riffleShuffle(this, root, sprites, stack)` | `riffleShuffle(board, sprites, stack)` |
-| `renderCourts(this, palette, opts)` | `renderCourts(board, palette, opts)` |
-| `suitTexture(scene, suit, color)` → key | `suitTexture(board, suit, color, size)` → region; `board.image(region, ...)` |
-| `new TuckBox(this, x, y, opts)` + `update` | not carried over |
-| `toBoard(this, pointer)` | pointers arrive in board units already; `board.toBoard(clientX, clientY)` |
-| `this.input.setDraggable(sprite)` + `drag` events | `sprite.draggable = true`; `board.on('dragstart' \| 'drag' \| 'dragend')` |
-| `this.add.text`, `this.add.graphics` | `board.text(...)`, `board.graphic(w, h, paint)` |
-| `this.tweens.add({...})` | `board.tweens.add({...})` - same shape, same ease names |
-| `cardSnapshot`, `cardPlane`, `bendPlane` | gone: every card bends |
-| - | `flipCard(board, sprite)`: lift, roll half a turn, land the other side up |
-| - | `board.pick(x, y)`, `board.snapshot()`, `board.keepAwake()` |
-| - | `animatorOf(board).play(target, { channel, policy, intent, debounce, ... })` |
-
 ## Canned animations
 
 Flips, throws, landing pops and re-fans go through the board's `Animator`.
@@ -571,6 +572,32 @@ into a small CPU canvas from CPU-backed sources and shared mip chains; rank
 text is rastered once per size and ink. It is uploaded as premultiplied
 bytes, and the texture array grows by GPU-side copy.
 
+## From phaser-card-engine
+
+The names were kept wherever the idea survived, so a port is mostly deleting
+`this.root` and `scene`:
+
+| phaser-card-engine | felt |
+| --- | --- |
+| `createBoard({ scene })`, `boardRoot(this)` | `createBoard({...})` - no scene, no root |
+| `preloadCardArt(this, ...)` in `preload` | `loadCardArt(board, ...)`, any time (alias `preloadCardArt`) |
+| `new CardSprite(this, card, style)` | `new CardSprite(board, card, style)` - same `CardStyle` |
+| `orderStack(root, sprites, stack, base)` | `orderStack(sprites, stack, base)` |
+| `layHand(this, root, sprites, hand, opts)` | `layHand(board, sprites, hand, opts)` |
+| `throwCard(this, sprite, target, opts)` | `throwCard(board, sprite, target, opts)` + `arc` |
+| `riffleShuffle(this, root, sprites, stack)` | `riffleShuffle(board, sprites, stack)` |
+| `renderCourts(this, palette, opts)` | `renderCourts(board, palette, opts)` |
+| `suitTexture(scene, suit, color)` → key | `suitTexture(board, suit, color, size)` → region; `board.image(region, ...)` |
+| `new TuckBox(this, x, y, opts)` + `update` | not carried over |
+| `toBoard(this, pointer)` | pointers arrive in board units already; `board.toBoard(clientX, clientY)` |
+| `this.input.setDraggable(sprite)` + `drag` events | `sprite.draggable = true`; `board.on('dragstart' \| 'drag' \| 'dragend')` |
+| `this.add.text`, `this.add.graphics` | `board.text(...)`, `board.graphic(w, h, paint)` |
+| `this.tweens.add({...})` | `board.tweens.add({...})` - same shape, same ease names |
+| `cardSnapshot`, `cardPlane`, `bendPlane` | gone: every card bends |
+| - | `flipCard(board, sprite)`: lift, roll half a turn, land the other side up |
+| - | `board.pick(x, y)`, `board.snapshot()`, `board.keepAwake()` |
+| - | `animatorOf(board).play(target, { channel, policy, intent, debounce, ... })` |
+
 ## The demo
 
 ```bash
@@ -578,19 +605,25 @@ npm install
 npm run demo        # http://localhost:4390, and the LAN address
 ```
 
-The index is one page: every demo is a scene, and moving between them never
-navigates (each still works on its own page too). There are three basics -
-one stack, the engine loading, and two seats playing one game through a fake
-network in lockstep - then eight of phaser-card-engine's pages - stacks, card sizes, throwing,
-hold'em, hands, the deck editor, the riffle, card faces - ported
-to felt. Some do more than before: thrown cards arc off the felt, cards dealt
-face up flip over in the air, and the riffled packets are the cards
-themselves.
+Or [on GitHub Pages](https://exterkamp.github.io/felt/). The index is one
+page: every demo is a scene, and moving between them never navigates (each
+still works on its own page too), and each shows its own source in a Code
+panel.
+
+- **Basics:** from a blank board (the tour), one stack, the engine loading,
+  two seats playing one game through a fake network in lockstep, and a
+  stress page of four thousand cards.
+- **Moving cards:** stacks, hands, throwing, flicking, magnetic stacks,
+  dealing hold'em, the riffle.
+- **Games and their parts:** solitaire (with undo and resume), tap to move,
+  readouts and toasts, chips, dice and pegs, and painted tables - blackjack,
+  baccarat, craps, a parlour table of old patterns, and every border.
+- **The cards themselves:** card faces, the deck editor, card sizes.
 
 ## Testing
 
 ```bash
-npm test            # typecheck (library, specs, demos) + 320 vitest specs in node
+npm test            # typecheck (library, specs, demos) + 440 vitest specs in node
 npm run smoke -- --host=http://localhost:4390   # real Chrome, real WebGL2 (SwiftShader)
 ```
 
@@ -603,8 +636,7 @@ pile over the packets, hands re-fanning without spinning, throws leaving the fel
 
 ## What is next
 
-This is the reimplementation. What it was built to be good at, and does not do
-yet:
+What it does not do yet:
 
 - **Multiplayer, over a real network.** `Simulation` is the deterministic
   state and the lockstep protocol; a transport (WebSocket, WebRTC), joining
@@ -612,8 +644,11 @@ yet:
 - **Replays and hints** from the history: `history.log()` is already the
   move list, and `restoreTable` can step a table through it; a replay player
   and a solver's "show me" are not written yet.
-- **Measure on real GPUs.** `demo/stress.html` is a thousand cards in
-  flight; every number so far is SwiftShader's.
+- **Sound**: card snaps, shuffles and deals, unlocked by the first tap.
+- **Playing by keyboard**: `selection.tap()` can be driven without a
+  pointer and announcements already speak; keys and focus are not wired up.
+- **Turns and phases**: whose turn it is, deal - play - score, a turn
+  timer, a hook for a computer player. Every game still writes its own.
 
 ## Licence
 
