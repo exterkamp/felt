@@ -195,13 +195,13 @@ export class Die {
   private pose(flying = false): void {
     if (this.destroyed) return;
     const half = this.size / 2;
-    const depth = flying ? PIECE_FLYING_DEPTH + 10 : PIECE_DEPTH + Math.round(this._y) * 256 + 220;
+    const depth = flying ? PIECE_FLYING_DEPTH + 10 + this._z * 0.01 : PIECE_DEPTH + Math.round(this._y) * 256 + 220;
     let up = 0;
     let upAngle = 0;
     for (const [face, piece] of this.faces) {
       const n = faceNormal(this._rotation, face);
       // Edge-on or turned away: a cube's hidden faces are never drawn.
-      const visible = n[2] > 0.02;
+      const visible = n[2] > 0.06;
       piece.visible = visible;
       if (!visible) continue;
       const m = mul3(this._rotation, faceFrame(face));

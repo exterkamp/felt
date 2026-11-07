@@ -101,7 +101,7 @@ console.log(`smoking ${host}`);
 await send('Page.navigate', { url: `${host}/` });
 await sleep(700);
 const tiles = JSON.parse(await evaluate(`JSON.stringify([...document.querySelectorAll('a.demo')].map(a => a.href))`));
-check(tiles.length === 17, `the home screen lists seventeen demos (${tiles.length})`);
+check(tiles.length === 18, `the home screen lists eighteen demos (${tiles.length})`);
 let reachable = 0;
 let wayBack = 0;
 let boards = 0;
@@ -700,6 +700,136 @@ check(painted.paint.red > 200 && painted.paint.yellow > 200 && painted.paint.whi
   `the paint is the colour asked for: red, yellow and white on the craps layout (${painted.paint.red}/${painted.paint.yellow}/${painted.paint.white} px)`);
 const layoutPages = Math.max(...['blackjack', 'baccarat', 'craps', 'parlour', 'borders'].map(n => painted[n].pages));
 check(layoutPages <= 3, `and every layout fits the atlas in ${layoutPages} page(s)`);
+// --- pieces: chips, a dealer button, dice and a peg board ------------------
+console.log('\npieces');
+await open('pieces.html', '__felt?.pieces?.stacks?.length > 8');
+const pcs = JSON.parse(await evaluate(`(async () => {
+  const f = __felt; const b = f.board; const P = f.pieces;
+  const wait = (ms) => new Promise(r => setTimeout(r, ms));
+  const shot = () => { const c = b.snapshotCanvas(); return { pen: c.getContext('2d'), r: c.width / b.width }; };
+  const rgb = (css) => { const n = parseInt(css.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; };
+  const out = {};
+  // Every denomination, one chip each, sampled in the ring of body colour
+  // between the inlay and the dashed ring.
+  const probes = P.set.denominations.map((d, i) => P.stack({ id: 'probe-' + d.value, x: 40 + i * 64, y: 730, chips: [d.value] }));
+  await wait(300);
+  { const { pen, r } = shot();
+    out.colours = probes.map((s) => {
+      const chip = s.top; const want = rgb(P.set.of(chip.value).color); const R = chip.width / 2;
+      const x0 = Math.floor((chip.x - R) * r); const y0 = Math.floor((chip.y - R) * r);
+      const n = Math.ceil(2 * R * r) + 2; let ring = 0, near = 0;
+      const px = pen.getImageData(x0, y0, n, n).data;
+      for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+        // From the chip's true middle, which is not on a pixel.
+        const d = Math.hypot(x0 + x + 0.5 - chip.x * r, y0 + y + 0.5 - chip.y * r) / (R * r);
+        if (d < 0.57 || d > 0.62) continue;
+        ring++; const i = (y * n + x) * 4;
+        // Nearest, of all the set's colours, to its own.
+        const dist = (c) => Math.abs(px[i] - c[0]) + Math.abs(px[i + 1] - c[1]) + Math.abs(px[i + 2] - c[2]);
+        if (P.set.denominations.every((o) => o.value === chip.value || dist(rgb(o.color)) > dist(want))) near++;
+      }
+      return { value: chip.value, share: near / ring };
+    }); }
+  out.chipRegions = new Set(P.stacks.flatMap(s => s.chips).map(c => c.face)).size;
+  out.chipValues = new Set(P.stacks.flatMap(s => s.chips).map(c => c.value)).size;
+  for (const s of probes) P.removeStack(s);
+  // A bet, a collect, a payout: every stack's value, and the chips really there.
+  const value = (s) => s.value;
+  const banks = [...f.banks.values()]; const bets = [...f.bets.values()];
+  const total = () => [...P.stacks].reduce((n, s) => n + s.value, 0);
+  const before = { banks: banks.map(value), total: total() };
+  const westBefore = f.banks.get('west').values.slice();
+  await f.bet();
+  await wait(200);
+  const inPlace = (s) => s.chips.every((c, i) => { const p = s.place(i); return Math.hypot(c.x - p.x, c.y - p.y) < 0.01 && c.shown.z === 0; });
+  out.bet = { banks: banks.map(value), bets: bets.map(value), total: total(), placed: bets.every(inPlace) && banks.every(inPlace),
+    westBroke: !westBefore.includes(5) && f.bets.get('west').values.join() === '5,5,5' };
+  await f.collect();
+  await wait(200);
+  out.collect = { bets: bets.map(value), pot: f.pot.value, potChips: f.pot.count, placed: inPlace(f.pot) };
+  // The pot's chips drawn in the pot: its pixels are chips, not felt.
+  const winner = f.seats[(1 + 0) % f.seats.length].id;
+  const winnerBefore = f.banks.get(winner).value;
+  await f.win();
+  await wait(200);
+  out.win = { pot: f.pot.value, gained: f.banks.get(winner).value - winnerBefore, total: total(), placed: inPlace(f.banks.get(winner)) };
+  out.before = before;
+  // The dealer button moves round the seats.
+  const d0 = { x: f.dealerButton.x, y: f.dealerButton.y };
+  f.nextHand(); await wait(1200);
+  out.button = { moved: Math.hypot(f.dealerButton.x - d0.x, f.dealerButton.y - d0.y), at: Math.hypot(f.dealerButton.x - f.seats[1].button.x, f.dealerButton.y - f.seats[1].button.y) };
+  // The dice: told 6 and 2, they land on 6 and 2 - by their orientation, and
+  // by counting the pips on the top face in the picture.
+  out.dice = [];
+  for (const want of [[6, 2], [1, 5], [3, 4]]) {
+    const got = await f.roll(want);
+    await wait(150);
+    const { pen, r } = shot();
+    const pips = f.dice.map((die) => {
+      const top = die.faces.get(die.showing);
+      const k = 1 / (1 - top.z / b.distance);       // the lens, around the face's own middle
+      const half = die.size * 0.47 * k;
+      const w = Math.round(2 * half * r);
+      const px = pen.getImageData((top.x - half) * r, (top.y - half) * r, w, w).data;
+      const light = new Uint8Array(w * w);
+      for (let i = 0; i < w * w; i++) light[i] = px[i * 4] > 200 && px[i * 4 + 1] > 190 && px[i * 4 + 2] > 180 ? 1 : 0;
+      let blobs = 0; const seen = new Uint8Array(w * w);
+      for (let i = 0; i < w * w; i++) {
+        if (!light[i] || seen[i]) continue;
+        let size = 0; const stack = [i]; seen[i] = 1;
+        while (stack.length) { const j = stack.pop(); size++; const x = j % w, y = (j / w) | 0;
+          for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + dx, ny = y + dy, n = ny * w + nx;
+            if (nx >= 0 && ny >= 0 && nx < w && ny < w && light[n] && !seen[n]) { seen[n] = 1; stack.push(n); } } }
+        if (size > 6) blobs++;
+      }
+      return blobs;
+    });
+    out.dice.push({ want, got, showing: f.dice.map(d => d.showing), pips, flat: f.dice.every(d => Math.abs(d.z - d.size / 2) < 1e-6) });
+  }
+  // The peg board: red pegs 5 then 7 - the back peg leapfrogs to 12.
+  f.crib.reset();
+  const m1 = await f.peg(0, 5); const m2 = await f.peg(0, 7); const m3 = await f.peg(1, 9);
+  await wait(300);
+  const pegAt = (p, i) => { const peg = f.crib.pegs[p][i]; return { x: peg.x, y: peg.y }; };
+  const off = (p, i, hole) => { const at = pegAt(p, i); const h = f.crib.hole(p, hole); return Math.hypot(at.x - h.x, at.y - h.y); };
+  const red = f.crib.state(0).pegs; const blue = f.crib.state(1).pegs;
+  { const { pen, r } = shot();
+    const h = f.crib.hole(0, 12); const px = pen.getImageData(h.x * r - 1, h.y * r - 1, 3, 3).data;
+    out.pegPixel = [px[16], px[17], px[18]]; }
+  out.pegs = { red, blue, moves: [m1, m2, m3].map(m => [m.peg, m.from, m.to]),
+    off: Math.max(off(0, 0, red[0]), off(0, 1, red[1]), off(1, 0, blue[0]), off(1, 1, blue[1])), scores: [f.crib.score(0), f.crib.score(1)] };
+  // Save, change everything, restore: the same plain data back.
+  f.save(); const saved = JSON.stringify(P.state());
+  await f.bet(); await f.peg(1, 4); f.dice[0].set(1);
+  f.restore(); await wait(200);
+  out.restored = JSON.stringify(P.state()) === saved;
+  if (!out.restored) out.diff = [saved, JSON.stringify(P.state())];
+  b.render();
+  out.draw = { calls: b.renderer.drawCalls, instances: b.renderer.instanceCount, pages: b.atlas.pages.length, painted: P.board.services.get('piece-art').painted };
+  return JSON.stringify(out);
+})()`));
+check(pcs.colours.every((c) => c.share > 0.8),
+  `every chip is drawn in its denomination's colour (${pcs.colours.map((c) => `${c.value}: ${Math.round(c.share * 100)}%`).join(', ')})`);
+check(pcs.chipRegions === pcs.chipValues, `and chips of one value share one picture (${pcs.chipRegions} pictures for ${pcs.chipValues} values)`);
+check(pcs.bet.banks.every((v, i) => v === pcs.before.banks[i] - 15) && pcs.bet.bets.every((v) => v === 15) && pcs.bet.total === pcs.before.total && pcs.bet.placed,
+  `a bet takes 15 from every bank to its circle, nothing lost, every chip in its place (${pcs.bet.banks.join(', ')})`);
+check(pcs.bet.westBroke, 'a bank with no fives breaks a 25 to make 15');
+check(pcs.collect.bets.every((v) => v === 0) && pcs.collect.pot === 60 && pcs.collect.placed,
+  `collecting sweeps every bet into the pot (${pcs.collect.pot} in ${pcs.collect.potChips} chips)`);
+check(pcs.win.pot === 0 && pcs.win.gained === 60 && pcs.win.total === pcs.before.total && pcs.win.placed,
+  `and the pot goes to the winner, stacked (${pcs.win.gained} gained)`);
+check(pcs.button.moved > 50 && pcs.button.at < 0.5, `the dealer button moves to the next seat (${pcs.button.at.toFixed(2)} units off it)`);
+check(pcs.dice.every((d) => d.got.join() === d.want.join() && d.showing.join() === d.want.join() && d.flat),
+  `dice land flat on the faces asked for (${pcs.dice.map((d) => d.showing.join('+')).join(', ')})`);
+check(pcs.dice.every((d) => d.pips.join() === d.want.join()),
+  `and the pips counted in the picture agree (${pcs.dice.map((d) => d.pips.join('+')).join(', ')})`);
+check(pcs.pegs.red.join() === '12,5' && pcs.pegs.blue.join() === '0,9' && pcs.pegs.off < 0.01 && pcs.pegs.scores.join() === '12,9',
+  `pegs leapfrog into the right holes (red ${pcs.pegs.red.join('/')}, blue ${pcs.pegs.blue.join('/')}, ${pcs.pegs.off.toFixed(3)} units off)`);
+check(pcs.pegPixel[0] > 120 && pcs.pegPixel[0] > pcs.pegPixel[2] * 1.6, `and the red peg is drawn in hole 12 (rgb ${pcs.pegPixel.join(',')})`);
+if (!pcs.restored) console.log(pcs.diff.join('\n'));
+check(pcs.restored, 'saving and restoring gives back the same plain-data state');
+check(pcs.draw.calls === 1 && pcs.draw.pages <= 2,
+  `chips, tokens, dice and the peg board in one draw call and ${pcs.draw.pages} atlas page(s) (${pcs.draw.instances} instances, ${pcs.draw.painted} piece pictures)`);
 // --- magnetic stacks: flicked near its suit, it is drawn in -----------------
 console.log('\nmagnetic stacks');
 await open('magnets.html', '__felt?.deck?.().length === 52');

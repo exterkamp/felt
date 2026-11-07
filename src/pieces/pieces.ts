@@ -331,7 +331,8 @@ export class Pieces implements StackHost {
     return {
       stacks: this.stackList.map((s) => ({ id: s.id, x: s.x, y: s.y, chips: s.values })),
       tokens: this.tokenList.map((t) => ({ id: t.id, x: t.x, y: t.y, angle: t.angle, label: t.label })),
-      dice: this.diceList.map((d) => ({ id: d.id, x: d.x, y: d.y, value: d.value, yaw: d.yaw })),
+      // The yaw rounded: worked back out of a rotation, it is never quite the number it was set from.
+      dice: this.diceList.map((d) => ({ id: d.id, x: d.x, y: d.y, value: d.value, yaw: Math.round(d.yaw * 1e6) / 1e6 })),
       pegs: this.boards.map((b) => ({ id: b.id, players: Array.from({ length: b.track.players }, (_, p) => b.state(p)) })),
     };
   }
@@ -419,7 +420,10 @@ export class Pieces implements StackHost {
       if (node instanceof Chip) {
         const from = node.stack;
         if (!from || !canTake(node, from) || this.moving.has(node)) { pointer.refuse?.(); return; }
-        const group = from.chips.slice(from.chips.indexOf(node));
+        // It and the chips on it - in its own column, not the next one over.
+        const index = from.chips.indexOf(node);
+        const per = from.layoutOptions.perColumn ?? 20;
+        const group = from.chips.slice(index, (Math.floor(index / per) + 1) * per);
         for (const chip of group) animator.stop(chip, 'move');
         held = { lead: node, group, from, grip: { x: pointer.x - node.x, y: pointer.y - node.y },
           rel: group.map((c) => ({ x: c.x - node.x, y: c.y - node.y })) };
