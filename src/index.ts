@@ -25,6 +25,8 @@ export { Disposables } from './runtime/disposables.js';
 export type { Dispose } from './runtime/disposables.js';
 export { PageLifecycle } from './runtime/lifecycle.js';
 export { Director, defineScene } from './runtime/scene.js';
+export { Router, compilePath, createRouter } from './runtime/router.js';
+export type { GuardResult, NavigateOptions, Route, RouteMatch, RouterOptions, SceneHost } from './runtime/router.js';
 export { Rng, Simulation } from './runtime/simulation.js';
 export type { Rules, Snapshot, Stamped, StepContext, SimulationOptions } from './runtime/simulation.js';
 export type { DirectorOptions, GoOptions, Scene, SceneContext } from './runtime/scene.js';

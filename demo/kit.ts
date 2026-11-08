@@ -38,6 +38,14 @@ export function expose(handle: Record<string, unknown> & { board?: Board }): voi
  */
 export function standalone(scene: Scene<never>): void {
   if ((window as unknown as { __feltApp?: unknown }).__feltApp) return;
+  // Reached at its clean path - /felt/stacks, which the host answers with
+  // stacks.html - the page starts the whole app, which routes to this demo
+  // and keeps going from there. Only stacks.html, asked for by name, is the
+  // demo on its own.
+  if (!location.pathname.endsWith('.html')) {
+    void import('./app').then((app) => app.startApp());
+    return;
+  }
   const director = new Director(document.body, [scene]);
   void director.go(scene.name);
 }

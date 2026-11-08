@@ -513,8 +513,35 @@ and Babylon.
   update, fixedUpdate, pause, resume, sleep, wake, shutdown })`. A scene's
   context owns its boards, listeners, timers (`delay`, `every`, `wait`, on
   engine time) and frame callbacks, and undoes them all when the scene ends.
-  `director.go(name, data, { fade, keep })` changes screen without the page
-  navigating; with `{ hash: true }` the back button works.
+  `director.go(name, data, { fade, keep, restart })` changes screen without
+  the page navigating.
+- **Routes** (`createRouter(director, { routes, base })`): which scene a URL
+  is, on real paths - `/play/klondike`, no `#`. A route is a `path`
+  (`/`, `/play/:game`, `/files/*`, `*`), a `scene` (a name, the scene, or
+  `() => import('./table')` to load it the first time it is wanted), and
+  optionally `data`, `title`, `redirect`, `keep` and `fade`. A `guard` can
+  refuse a change or send it elsewhere. Links to routes become scene changes,
+  and back, forward, reload and a pasted URL all land on the same scene; an
+  old `#/name` link is moved onto its path. The server has to answer a path
+  with no file of its own with the app's page (on GitHub Pages, a copy of
+  `index.html` as `404.html`); `mode: 'hash'` does without that, and
+  `mode: 'memory'` keeps the route out of the URL altogether.
+
+  ```ts
+  const router = createRouter(director, {
+    base: import.meta.env.BASE_URL,
+    routes: [
+      { path: '/', scene: 'lobby' },
+      { path: '/play/:game', scene: () => import('./table'), data: (m) => ({ game: m.params.game }) },
+      { path: '*', redirect: '/' },
+    ],
+  });
+  await router.start();
+  router.navigate('/play/yukon');
+  ```
+
+  (`new Director(host, scenes, { hash: true })` still mirrors the scene in
+  the hash on its own, for a page with no router.)
 - **`Simulation`**: the game as plain data, changed only by commands stamped
   with the tick they apply at, with a saveable seeded `Rng`. Copies fed the
   same commands agree to the bit (`hash()`). It also offers `snapshot`,
@@ -606,9 +633,9 @@ npm run demo        # http://localhost:4390, and the LAN address
 ```
 
 Or [on GitHub Pages](https://exterkamp.github.io/felt/). The index is one
-page: every demo is a scene, and moving between them never navigates (each
-still works on its own page too), and each shows its own source in a Code
-panel.
+page: every demo is a scene at its own path (`/felt/stacks`), moving
+between them never navigates, and each shows its own source in a Code
+panel. A demo's `.html` (`stacks.html`) still runs it on a page of its own.
 
 - **Basics:** from a blank board (the tour), one stack, the engine loading,
   two seats playing one game through a fake network in lockstep, and a
