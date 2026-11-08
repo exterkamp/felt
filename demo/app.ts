@@ -1,5 +1,3 @@
-import './serve';
-import { Director, Scene, defineScene, engine } from '@exterkamp/felt';
 
 // The demo as one page.
 //
@@ -7,17 +5,24 @@ import { Director, Scene, defineScene, engine } from '@exterkamp/felt';
 // the index is a scene too, and following a tile changes scene rather than
 // navigating. So the engine - its loop, and every piece of art it has
 // fetched and painted - lives for the whole visit, and going from one demo to
-// the next is a new board on a warm engine instead of a cold page. The hash
-// (#/stacks) says which scene is showing, so back, forward and reload work.
+// the next is a new board on a warm engine instead of a cold page.
+//
+// The router says which scene a URL is: `/felt/stacks` is the stacks demo,
+// with no `#` in it, so back, forward, reload and a pasted link all land on
+// the same scene. Any page can start this: index.html does, and so does a
+// demo's own page reached at its clean path (GitHub Pages serves
+// stacks.html for /stacks) - see standalone() in kit.ts.
+
+import './serve';
+import { Director, Route, Scene, createRouter, defineScene, engine } from '@exterkamp/felt';
 
 // Before any scene module runs: tells them not to start themselves.
-(window as unknown as { __feltApp: boolean }).__feltApp = true;
+(window as unknown as { __feltApp: unknown }).__feltApp = true;
 
 const modules = import.meta.glob<{ scene: Scene<never> }>(
-  ['./*.ts', '!./app.ts', '!./code.ts', '!./kit.ts', '!./serve.ts']);
+  ['./*.ts', '!./app.ts', '!./code.ts', '!./kit.ts', '!./serve.ts', '!./bench-core.ts']);
 const pages = import.meta.glob<string>('./*.html', { query: '?raw', import: 'default' });
 const nameOf = (path: string) => path.replace(/^.*\//, '').replace(/\.(ts|html)$/, '');
-const available = new Set(Object.keys(modules).map(nameOf));
 
 /** A page's markup as a scene's: its styles and its body, without its scripts. */
 function sceneMarkup(html: string): string {
@@ -27,49 +32,51 @@ function sceneMarkup(html: string): string {
   return `${styles}\n${doc.body.innerHTML}`;
 }
 
-// The index, taken from this page: its styles move into the scene so they
-// apply only while it is showing, not over every demo.
-const indexStyles = [...document.head.querySelectorAll('style')];
-const indexHtml = indexStyles.map((style) => style.outerHTML).join('\n') + document.body.innerHTML;
-for (const style of indexStyles) style.remove();
-document.body.innerHTML = '';
+const titleOf = (html: string, name: string) => /<title>([^<]*)<\/title>/.exec(html)?.[1] ?? `felt — ${name}`;
 
-const director = new Director(document.body, [
-  defineScene({ name: 'index', title: 'felt', html: indexHtml, create() {} }),
-], { hash: true });
+/** A demo page as a scene, its markup and title from its own .html. */
+async function demoScene(name: string, load: () => Promise<{ scene: Scene<never> }>): Promise<Scene<never>> {
+  const [module, page] = await Promise.all([load(), pages[`./${name}.html`]()]);
+  titles.set(name, titleOf(page, name));
+  return { ...module.scene, html: sceneMarkup(page) };
+}
 
 const titles = new Map<string, string>();
 
-/** Loads a demo's scene the first time it is wanted, then goes to it. */
-async function open(name: string): Promise<void> {
-  if (name !== 'index' && !director.has(name)) {
-    if (!available.has(name)) return;
-    const [module, page] = await Promise.all([modules[`./${name}.ts`](), pages[`./${name}.html`]()]);
-    titles.set(name, /<title>([^<]*)<\/title>/.exec(page)?.[1] ?? `felt — ${name}`);
-    director.add({ ...module.scene, html: sceneMarkup(page) });
-  }
-  await director.go(name, undefined, { fade: 120 });
-  document.title = titles.get(name) ?? 'felt';
-  window.scrollTo(0, 0);
+export async function startApp(): Promise<void> {
+  // The index from this document when it is the index - at once, nothing to
+  // fetch - and from its own file when the app was started by a demo's page.
+  const here = !!document.querySelector('a.demo');
+  const index = here
+    ? [...document.head.querySelectorAll('style')].map((style) => style.outerHTML).join('\n') + document.body.innerHTML
+    : sceneMarkup(await pages['./index.html']());
+  titles.set('index', here ? document.title : titleOf(await pages['./index.html'](), 'index'));
+  document.head.querySelectorAll('style').forEach((style) => style.remove());
+  document.body.innerHTML = '';
+
+  const director = new Director(document.body, [
+    defineScene({ name: 'index', html: index, create() {} }),
+  ]);
+
+  // #region Routes
+  const routes: Route[] = [
+    { path: '/', scene: 'index', title: () => titles.get('index')! },
+    // One route a demo, loaded the first time it is wanted. A demo's .html
+    // name still works, for links from before the paths were clean.
+    ...Object.entries(modules).flatMap(([path, load]): Route[] => {
+      const name = nameOf(path);
+      if (!pages[`./${name}.html`]) return [];
+      return [
+        { path: `/${name}`, scene: () => demoScene(name, load), title: () => titles.get(name) ?? `felt — ${name}` },
+        { path: `/${name}.html`, redirect: `/${name}` },
+      ];
+    }),
+    { path: '/index.html', redirect: '/' },
+    { path: '*', redirect: '/' },
+  ];
+  const router = createRouter(director, { base: import.meta.env.BASE_URL, routes, fade: 120 });
+  await router.start();
+  // #endregion
+
+  (window as unknown as { __feltApp: unknown }).__feltApp = { director, router, engine: engine() };
 }
-
-// Links between demos become scene changes. Anything else is left alone.
-document.addEventListener('click', (event) => {
-  if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey) return;
-  const link = (event.target as Element).closest('a');
-  if (!link || link.origin !== location.origin) return;
-  const file = link.pathname.replace(/^.*\//, '');
-  const name = file === '' || file === 'index.html' ? 'index' : file.replace(/\.html$/, '');
-  if (name !== 'index' && !available.has(name)) return;
-  event.preventDefault();
-  void open(name);
-});
-
-// Back and forward, through the hash.
-window.addEventListener('hashchange', () => {
-  void open(/^#\/([\w-]+)/.exec(location.hash)?.[1] ?? 'index');
-});
-
-void open(/^#\/([\w-]+)/.exec(location.hash)?.[1] ?? 'index');
-
-(window as unknown as { __feltApp: unknown }).__feltApp = { director, engine: engine(), open };

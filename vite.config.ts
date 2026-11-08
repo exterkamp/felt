@@ -1,5 +1,20 @@
-import { defineConfig } from 'vite';
+import { defineConfig, type Connect } from 'vite';
+import { copyFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+
+// Clean paths for the demo: `/stacks` is the stacks demo, as it is on GitHub
+// Pages, which answers a path with the .html of the same name by itself.
+// Vite would answer it with stacks.ts - it resolves a bare name to a module
+// - so a page asked for by a browser is pointed at its .html first. The page
+// then starts the app's router (see demo/kit.ts, standalone).
+const cleanPaths: Connect.NextHandleFunction = (req, _res, next) => {
+  const [path, query = ''] = (req.url ?? '').split('?');
+  const name = /^\/([a-z0-9-]+)\/?$/.exec(path)?.[1];
+  if (name && req.headers.accept?.includes('text/html') && existsSync(resolve(__dirname, 'demo', `${name}.html`))) {
+    req.url = `/${name}.html${query ? `?${query}` : ''}`;
+  }
+  next();
+};
 
 // The demo, served straight from the package it demonstrates.
 //
@@ -10,6 +25,16 @@ export default defineConfig({
   // The bench (demo/bench.html) posts its results here, so a phone's run
   // lands in the dev server's log.
   plugins: [{
+    name: 'felt-clean-paths',
+    configureServer(server) { server.middlewares.use(cleanPaths); },
+    configurePreviewServer(server) { server.middlewares.use(cleanPaths); },
+    // Any other path on Pages - a route with no file of its own - is
+    // answered with 404.html: the index, so the router can take it from there.
+    closeBundle() {
+      const out = resolve(__dirname, 'demo-dist');
+      if (existsSync(resolve(out, 'index.html'))) copyFileSync(resolve(out, 'index.html'), resolve(out, '404.html'));
+    },
+  }, {
     name: 'felt-bench-log',
     configureServer(server) {
       server.middlewares.use('/__bench', (req, res) => {

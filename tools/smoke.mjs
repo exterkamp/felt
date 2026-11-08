@@ -1268,17 +1268,17 @@ await send('Page.navigate', { url: `${host}/` });
 await until('!!window.__feltApp?.director?.scene');
 const spa = JSON.parse(await evaluate(`(async () => {
   const app = window.__feltApp; const wait = (ms) => new Promise(r => setTimeout(r, ms));
-  const names = [...document.querySelectorAll('a.demo')].map(a => a.getAttribute('href').replace('./', '').replace('.html', ''));
+  const names = [...document.querySelectorAll('a.demo')].map(a => a.getAttribute('href').replace('./', ''));
   const loadsBefore = performance.getEntriesByType('navigation').length;
   const visits = []; let leftovers = 0;
   for (const name of names) {
-    document.querySelector('a.demo[href="./' + name + '.html"]').click();
+    document.querySelector('a.demo[href="./' + name + '"]').click();
     const t = performance.now();
     const live = () => app.director.scene === name && window.__felt?.board && !window.__felt.board.isDestroyed
       && (window.__felt.board.renderer.instanceCount > 0 || window.__felt.board.renderer.drawCalls > 0);
     while (!live() && performance.now() - t < 8000) await wait(50);
     visits.push({ name, scene: app.director.scene, canvases: document.querySelectorAll('canvas').length,
-      members: app.engine.memberCount, drawn: (window.__felt?.board?.renderer?.instanceCount ?? 0) + (window.__felt?.board?.renderer?.drawCalls ?? 0), hash: location.hash });
+      members: app.engine.memberCount, drawn: (window.__felt?.board?.renderer?.instanceCount ?? 0) + (window.__felt?.board?.renderer?.drawCalls ?? 0), path: location.pathname, hash: location.hash });
     await wait(300);
     document.querySelector('a.home').click();
     const back = performance.now();
@@ -1289,26 +1289,37 @@ const spa = JSON.parse(await evaluate(`(async () => {
   }
   // Again, warm: the art is the engine's from the first visit.
   const art = app.engine.services.get('art-store'); const known = art.report().length;
-  document.querySelector('a.demo[href="./stacks.html"]').click();
+  document.querySelector('a.demo[href="./stacks"]').click();
   const t = performance.now();
   while (!(app.director.scene === 'stacks' && !window.__felt.board.isDestroyed
     && window.__felt.board.renderer.instanceCount > 70) && performance.now() - t < 8000) await wait(10);
   const warm = performance.now() - t;
-  // The back button, through the hash.
-  history.back(); await wait(500);
+  // The back button, through the History API.
+  const settle = async (want) => { const t = performance.now(); while (app.director.scene !== want && performance.now() - t < 5000) await wait(50); };
+  history.back(); await settle('index');
   const afterBack = app.director.scene;
-  history.forward(); await wait(1200);
+  history.forward(); await settle('stacks');
   return JSON.stringify({ visits, leftovers, warm, newArt: art.report().length - known, afterBack,
     afterForward: app.director.scene, navigations: performance.getEntriesByType('navigation').length - loadsBefore,
     sameDocument: !!window.__feltApp });
 })()`));
-const opened = spa.visits.filter(v => v.scene === v.name && v.canvases >= 1 && v.members === v.canvases && v.drawn > 0 && v.hash === '#/' + v.name);
+const opened = spa.visits.filter(v => v.scene === v.name && v.canvases >= 1 && v.members === v.canvases && v.drawn > 0 && v.path === '/' + v.name && v.hash === '');
 if (opened.length !== spa.visits.length) console.log(JSON.stringify(spa.visits.filter(v => !opened.includes(v))));
 check(opened.length === spa.visits.length, `every demo opens as a scene in one page, with its board drawing (${opened.length}/${spa.visits.length})`);
 check(spa.leftovers === 0, `leaving a scene leaves nothing behind: no canvas, board, timer or meter (${spa.leftovers} left something)`);
 check(spa.sameDocument && spa.navigations === 0, 'and the page never navigated');
 check(spa.newArt === 0, `a demo visited again fetches no art again, and draws in ${Math.round(spa.warm)} ms`);
 check(spa.afterBack === 'index' && spa.afterForward === 'stacks', `back and forward move between scenes (${spa.afterBack}, ${spa.afterForward})`);
+
+// A URL is a scene: a clean path pasted in, an old #/ link, a query, and somewhere that is not a demo.
+const deep = [];
+for (const [url, want] of [['/stacks', ['stacks', '/stacks']], ['/#/hands', ['hands', '/hands']], ['/throws?seed=1', ['throws', '/throws']], ['/nowhere', ['index', '/']]]) {
+  await send('Page.navigate', { url: `${host}${url}` });
+  await until(`window.__feltApp?.director?.scene === ${JSON.stringify(want[0])}`, 8000);
+  const got = JSON.parse(await evaluate(`JSON.stringify([window.__feltApp?.director?.scene, location.pathname, location.hash])`));
+  deep.push(got[0] === want[0] && got[1] === want[1] && got[2] === '' ? null : `${url} -> ${got.join(' ')}`);
+}
+check(deep.every((d) => d === null), `a URL opens its scene, with no # in it (${deep.filter(Boolean).join(', ') || '4/4'})`);
 
 check(errors.length === 0, `no page threw (${errors.length}${errors.length ? `: ${errors.slice(0, 3).join(' | ')}` : ''})`);
 console.log(failures ? `\n${failures} failed` : '\nall good');

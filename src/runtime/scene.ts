@@ -91,6 +91,12 @@ export interface GoOptions {
   fade?: number;
   /** Keep the scene being left alive and asleep, to `go` back to and wake. */
   keep?: boolean;
+  /**
+   * When the scene asked for is the one already running: end it and start it
+   * again with the new data, rather than leaving it be. What a router wants
+   * for one scene at many URLs - a table at /play/klondike, then /play/yukon.
+   */
+  restart?: boolean;
 }
 
 export interface DirectorOptions {
@@ -248,11 +254,12 @@ export class Director {
     const scene = this.scenes.get(name);
     if (!scene) throw new Error(`felt: no scene called ${name}`);
     const leaving = this.current;
-    if (leaving?.name === name && leaving.state === 'running') return;
+    if (leaving?.name === name && leaving.state === 'running' && !options.restart) return;
     const fade = options.fade ?? 0;
     if (leaving) {
       if (fade) await this.fadeTo(this.host, 0, fade);
-      if (options.keep) this.sleep(leaving);
+      // A scene restarting cannot also sleep: it is the one being started.
+      if (options.keep && leaving.name !== name) this.sleep(leaving);
       else this.end(leaving);
     }
     this.current = undefined;
