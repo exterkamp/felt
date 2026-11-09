@@ -122,8 +122,10 @@ export const DECK_STOCK: Record<DeckTheme, DeckStock> = {
   //
   // Night play: deep navy, coral against silver-ivory.
   midnight: { paper: 0x12182b, red: 0xff7f6e, black: 0xe4e6dc, back: 0x1f3a5f },
-  // Felt and chips: near-black, crimson hearts against gold clubs.
-  casino: { paper: 0x0d0d10, red: 0xe8314a, black: 0xe6bd4a, back: 0x7a2e35 },
+  // Press's faces on Casino Night's back. The deck everybody is handed
+  // first should read like a deck of cards face up; the night is in the
+  // borderless lattice and the oxblood it is printed over.
+  casino: { paper: PAPER, red: RED, black: BLACK, back: 0x7a2e35 },
   // Cold and clean: ink blue, rose pink against icy cyan.
   arctic: { paper: 0x0e1a2e, red: 0xff6f9c, black: 0x9fe8ff, back: 0x2a5866 },
   // Glazed tile: white, brick red against cobalt.

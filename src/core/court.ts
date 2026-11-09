@@ -145,10 +145,8 @@ export const COURT_PALETTES: Record<DeckTheme, CourtPalette> = {
     ink: '#3c4a74', gold: '#d9c27a', red: '#c4564e',
     paper: '#12182b', highlight: '#e9edf6',
   },
-  casino: {
-    ink: '#8a6d1f', gold: '#e6bd4a', red: '#b01e38',
-    paper: '#0d0d10', highlight: '#f3e6c4',
-  },
+  // Press's courts, on Press's white paper - see DECK_STOCK.
+  casino: { ink: '#4a4892', gold: '#e8b422', red: '#cf2436' },
   arctic: {
     ink: '#3f7e9c', gold: '#ffffff', red: '#d9648a',
     paper: '#0e1a2e', highlight: '#e8f6fb',
