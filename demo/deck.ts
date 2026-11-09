@@ -1,5 +1,6 @@
 import './serve';
 import {
+  DEFAULT_DECK_THEME,
   BACK_COLORS,
   BODY_FONT,
   COURT_PALETTES,
@@ -95,7 +96,7 @@ export const scene = defineScene({
     // #endregion
 
     function defaults(): Editable {
-      return themeDeck('press');
+      return themeDeck(DEFAULT_DECK_THEME);
     }
 
     // Six whole decks, each one nothing but the values on this page.
@@ -353,7 +354,7 @@ export const scene = defineScene({
           for (const theme of DECK_THEMES) {
             preset.append(new Option(DECK_THEME_LABELS[theme], theme));
           }
-          preset.value = 'press';
+          preset.value = DEFAULT_DECK_THEME;
           preset.addEventListener('change', () => {
             if (!preset.value) return;
             this.set(themeDeck(preset.value as DeckTheme));

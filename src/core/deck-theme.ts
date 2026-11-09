@@ -1,7 +1,7 @@
 import { cardAssetBase } from './assets.js';
 // The decks a player can hold. Each is a whole palette - the courts' line
 // work and garment colors, and a card back with its own field, medallion and
-// border.
+// border - or, for Casino Night, a lattice with neither, run to the cut edge.
 //
 // A theme is a palette and a back. The courts it names are rendered from the
 // twelve SVG sources - see court.ts, where COURT_PALETTES holds them -
@@ -31,8 +31,12 @@ export const DECK_THEMES = [
 
 export type DeckTheme = (typeof DECK_THEMES)[number];
 
-/** What a player gets before choosing, and where an unknown name lands. */
-export const DEFAULT_DECK_THEME: DeckTheme = 'press';
+/**
+ * What a player gets before choosing, and where an unknown name lands.
+ * Casino Night, for its borderless back: a lattice that reads as a card
+ * back at any size and over any of the back colours.
+ */
+export const DEFAULT_DECK_THEME: DeckTheme = 'casino';
 
 /** Shown in a settings list. Kept here so nothing else has to name a deck. */
 export const DECK_THEME_LABELS: Record<DeckTheme, string> = {

@@ -1,5 +1,6 @@
 import './serve';
 import {
+  DEFAULT_DECK_THEME,
   BODY_FONT, COURT_PALETTES, Card, CardSprite, CourtPalette, DECK_STOCK, DECK_THEMES,
   DECK_THEME_LABELS, DISPLAY_FONT, DeckTheme, FACE_STYLES, FaceStyle, Rank, SUITS, Sprite, Suit,
   cardFaceMetrics, colorCss, loadCardArt, renderCourts,
@@ -29,7 +30,7 @@ export const scene = defineScene({
     let labels: Sprite[] = [];
     let width = 92;
     let suit: Suit = 'spades';
-    let theme: DeckTheme = 'press';
+    let theme: DeckTheme = DEFAULT_DECK_THEME;
 
     // #region Art for every deck
     void loadCardArt(board, { themes: [...DECK_THEMES] });

@@ -1,5 +1,6 @@
 import './serve';
 import {
+  DEFAULT_DECK_THEME,
   Card, CardSprite, DECK_THEMES, DeckTheme, Rank, Sprite, Suit,
   buildDeck, cardFaceMetrics, loadCardArt,
 } from '@exterkamp/felt';
@@ -28,7 +29,7 @@ export const scene = defineScene({
     ];
 
     const board = ctx.board({ parent: 'board', width: WIDTH, height: HEIGHT, backgroundColor: '#13463a' });
-    let theme: DeckTheme = 'press';
+    let theme: DeckTheme = DEFAULT_DECK_THEME;
     let faceUp = true;
     let sample = 0;
     let cards: CardSprite[] = [];

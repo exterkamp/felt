@@ -1,5 +1,6 @@
 import './serve';
 import {
+  DEFAULT_DECK_THEME,
   CardSprite, DECK_THEMES, DeckTheme, LoadingStage, SUITS, RANKS, buildDeck, cardsReady, loadingReport,
 } from '@exterkamp/felt';
 import { showCode } from './code';
@@ -50,7 +51,7 @@ export const scene = defineScene({
     note(`${at()}  board made, ${t0.toFixed(0)} ms after navigation${atOnce ? ' (drawing cards at once, waitForArt: false)' : ''}`);
 
     // The whole deck, one suit to a row, face up - so ready means every face.
-    let theme: DeckTheme = 'press';
+    let theme: DeckTheme = DEFAULT_DECK_THEME;
     let cards: CardSprite[] = [];
     const rowHeight = (HEIGHT - 2 * MARGIN) / 4;
     const step = (WIDTH - 2 * MARGIN - CARD) / (RANKS.length - 1);
