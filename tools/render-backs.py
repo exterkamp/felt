@@ -96,9 +96,12 @@ BACKS = {
     'midnight': {'field': 'rosette', 'medallion': 'quatrefoil', 'medallion_r': 0.170,
                  'border': 'scallop', 'step': 0.120, 'units': (0.56, 0.28),
                  'lobes': (8, 5), 'ink': (232, 238, 250)},
-    'casino': {'field': 'diaper', 'medallion': 'square', 'medallion_r': 0.140,
-               'border': 'chain', 'step': 0.060, 'units': (0.58, 0.30),
-               'lobes': (9, 6), 'corners': True, 'ink': (252, 240, 205)},
+    # Borderless: one lattice to the cut edge, no margin, rule or medallion.
+    # Taken from web-nert's casino.svg (exterkamp/web-nert#67), drawn here
+    # so every back is still one file of one kind. The numbers are that
+    # SVG's, in its 360x504 units, which are this file's too.
+    'casino': {'borderless': 'lattice', 'pitch': 24, 'width': 1.8, 'dot': 3,
+               'ink': (248, 237, 202)},
     'arctic': {'field': 'rays', 'medallion': 'lozenge', 'medallion_r': 0.130,
                'border': 'double', 'step': 0.140, 'units': (0.56, 0.30),
                'lobes': (7, 5), 'ink': (232, 248, 252)},
@@ -411,6 +414,59 @@ def build_field(size, spec, ss):
                               fine.point(lambda v: int(v * 0.46)))
 
 
+def build_borderless(spec):
+    """A back that is all field: a diamond lattice running to the cut edge.
+
+    The exception to build_back's white margin. A margin is there for a
+    guillotine that wanders, and a card on a screen is cut by the shader to
+    the same edge every time, so the pattern can go right up to it - the
+    rounded corners trim it and nothing else does.
+
+    No press pass either: this one is a clean vector repeat, and grain over
+    a hairline lattice reads as noise rather than as ink.
+    """
+    ss = 4
+    w, h = BACK_W * ss, BACK_H * ss
+    pitch = spec['pitch'] * ss
+    half = pitch / 2
+    # A tenth heavier than the SVG's stroke, which is what it takes for this
+    # to carry the same ink as Chrome's rendering of that SVG over the same
+    # colour - measured, not derived: PIL's thick diagonals and a browser's
+    # antialiased ones do not cover quite the same pixels.
+    line = max(1, round(spec['width'] * ss * 1.1))
+    dot = spec['dot'] * ss
+    ink = Image.new('L', (w, h), 0)
+    draw = ImageDraw.Draw(ink)
+    # Both diagonals, through every point where x and y are half a pitch
+    # apart from a multiple of the pitch: the SVG's lines x - y = 12 and
+    # x + y = 12, repeated every 24.
+    reach = w + h
+    k = -reach
+    while k < reach:
+        c = half + k
+        draw.line([(c - h, -h), (c + 2 * h, 2 * h)], fill=255, width=line)   # x - y = c
+        draw.line([(c + h, -h), (c - 2 * h, 2 * h)], fill=255, width=line)   # x + y = c
+        k += pitch
+    # A small diamond in the middle of every cell.
+    y = half
+    while y < h + pitch:
+        x = half
+        while x < w + pitch:
+            draw.polygon([(x, y - dot), (x + dot, y), (x, y + dot), (x - dot, y)], fill=255)
+            x += pitch
+        y += pitch
+    # Only the coverage is resized, and the one ink laid over it after:
+    # resizing an RGBA image works premultiplied, and un-premultiplying the
+    # thin edges of a hairline pushes its colour towards white.
+    ink = ink.resize((BACK_W, BACK_H), Image.LANCZOS)
+    tint = spec['ink']
+    size = (BACK_W, BACK_H)
+    return Image.merge('RGBA', (Image.new('L', size, tint[0]),
+                                Image.new('L', size, tint[1]),
+                                Image.new('L', size, tint[2]),
+                                ink))
+
+
 def build_back(spec):
     """An ornate back in the spirit of the classic ones.
 
@@ -601,7 +657,15 @@ def main():
         out_dir = os.path.join(OUT_DIR, name)
         os.makedirs(out_dir, exist_ok=True)
         out = os.path.join(out_dir, 'back.webp')
-        build_back(BACKS[name]).save(out, 'WEBP', quality=92, method=6)
+        spec = BACKS[name]
+        image = build_borderless(spec) if spec.get('borderless') else build_back(spec)
+        # Lossless for the borderless one: lossy WebP keeps colour at half
+        # resolution, and a hairline lattice loses its cream to it - the
+        # lines come out near white. A flat repeat compresses well anyway.
+        if spec.get('borderless'):
+            image.save(out, 'WEBP', lossless=True, quality=100, method=6)
+        else:
+            image.save(out, 'WEBP', quality=92, method=6)
         size = os.path.getsize(out)
         total += size
         print('  %-12s %4.0fkB' % (name, size / 1024))

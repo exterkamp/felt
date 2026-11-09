@@ -1,7 +1,7 @@
 import { cardAssetBase } from './assets.js';
 // The decks a player can hold. Each is a whole palette - the courts' line
 // work and garment colors, and a card back with its own field, medallion and
-// border.
+// border - or, for Casino Night, a lattice with neither, run to the cut edge.
 //
 // A theme is a palette and a back. The courts it names are rendered from the
 // twelve SVG sources - see court.ts, where COURT_PALETTES holds them -
@@ -31,8 +31,12 @@ export const DECK_THEMES = [
 
 export type DeckTheme = (typeof DECK_THEMES)[number];
 
-/** What a player gets before choosing, and where an unknown name lands. */
-export const DEFAULT_DECK_THEME: DeckTheme = 'press';
+/**
+ * What a player gets before choosing, and where an unknown name lands.
+ * Casino Night, for its borderless back: a lattice that reads as a card
+ * back at any size and over any of the back colours.
+ */
+export const DEFAULT_DECK_THEME: DeckTheme = 'casino';
 
 /** Shown in a settings list. Kept here so nothing else has to name a deck. */
 export const DECK_THEME_LABELS: Record<DeckTheme, string> = {
@@ -118,8 +122,10 @@ export const DECK_STOCK: Record<DeckTheme, DeckStock> = {
   //
   // Night play: deep navy, coral against silver-ivory.
   midnight: { paper: 0x12182b, red: 0xff7f6e, black: 0xe4e6dc, back: 0x1f3a5f },
-  // Felt and chips: near-black, crimson hearts against gold clubs.
-  casino: { paper: 0x0d0d10, red: 0xe8314a, black: 0xe6bd4a, back: 0x7a2e35 },
+  // Press's faces on Casino Night's back. The deck everybody is handed
+  // first should read like a deck of cards face up; the night is in the
+  // borderless lattice and the oxblood it is printed over.
+  casino: { paper: PAPER, red: RED, black: BLACK, back: 0x7a2e35 },
   // Cold and clean: ink blue, rose pink against icy cyan.
   arctic: { paper: 0x0e1a2e, red: 0xff6f9c, black: 0x9fe8ff, back: 0x2a5866 },
   // Glazed tile: white, brick red against cobalt.
