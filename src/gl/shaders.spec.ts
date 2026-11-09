@@ -15,6 +15,12 @@ describe('shaders, for strict GPU compilers', () => {
     expect(source as string).not.toMatch(/\b(float|u?int|bool|[biu]?vec[234]|mat[234])\s*\[\s*\d*\s*\]\s*\(/);
   });
 
+  it.each(sources)('%s squares nothing with pow', (_, source) => {
+    // pow(x, 2.0) is undefined for x below zero: NaN on phone GPUs, which
+    // turned every lit card solid white. Squares are written as x * x.
+    expect(source as string).not.toMatch(/pow\([^;]*,\s*2\.0\s*\)/);
+  });
+
   it.each(sources)('%s declares a default float precision', (_, source) => {
     expect(source as string).toMatch(/precision (highp|mediump) float;/);
   });

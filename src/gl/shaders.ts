@@ -146,16 +146,22 @@ const vec3 LIGHT = vec3(-0.36, -0.48, 0.8);
 // dimming, which is why there is dimming at all.
 vec4 shineOn(vec4 card, vec2 local, vec2 size, bool facing) {
   float shine = v_lean.w;
+  if (!(shine > 0.0)) return card;
   vec3 n = facing ? v_normal : -v_normal;
   vec3 lean = facing ? v_lean.xyz : -v_lean.xyz;
   vec3 light = normalize(LIGHT);
   vec3 h = normalize(light + vec3(0.0, 0.0, 1.0));
-  float sheen = pow(max(dot(n, h), 0.0), 30.0);
+  // pow is undefined for a base below zero, and at zero on some GPUs: a
+  // phone answers NaN where SwiftShader answers a number, and a NaN here is
+  // a card washed out to solid white. Squares are written as squares.
+  float sheen = pow(clamp(dot(n, h), 1e-4, 1.0), 30.0);
   vec2 q = local / size;                       // -0.5 to 0.5 across the face
   float along = (q.x + q.y) * 0.7071;          // up the diagonal
   float centre = 0.12 - (lean.x + lean.y) * 1.8;
-  float streak = exp(-pow((along - centre) / 0.11, 2.0));
-  float thin = exp(-pow((along - centre - 0.21) / 0.035, 2.0));
+  float wide = (along - centre) / 0.11;
+  float narrow = (along - centre - 0.21) / 0.035;
+  float streak = exp(-wide * wide);
+  float thin = exp(-narrow * narrow);
   float lambert = max(dot(n, light), 0.0);
   float shade = 1.0 - shine * (0.06 + 0.16 * (1.0 - lambert)) * (1.0 - max(streak, thin));
   vec3 glare = vec3(0.25 * sheen + 0.45 * streak + 0.3 * thin) * shine * card.a;
