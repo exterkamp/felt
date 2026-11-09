@@ -199,7 +199,8 @@ export class Piece extends Node {
     out[o + 28] = 0xffffff;
     out[o + 29] = p.lens;
     out[o + 30] = 0;
-    out[o + 31] = 0;
+    // Gloss, as a card's: a tossed chip catches the light as it turns.
+    out[o + 31] = p.shine > 0 ? Math.min(1, p.shine) : 0;
     // In the air its shadow is cast flat on the felt below it, the way a
     // lifted card's is (see CardSprite).
     const shadow = out[o + 23];
@@ -210,6 +211,7 @@ export class Piece extends Node {
       out[o + 4] = 0;
       out[o + 5] = 0;
       out[o + 6] = 0;
+      out[o + 31] = 0;   // a shadow does not shine
       out[o + 8] *= Math.max(0.15, Math.abs(Math.cos(p.turn)));
       out[o + 9] *= Math.max(0.15, Math.abs(Math.cos(p.tilt)));
       out[o + 22] = 2;
