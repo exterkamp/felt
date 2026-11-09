@@ -65,6 +65,8 @@ export { courtWorkerSupported, disposeCourtWorker } from './art/court-worker.js'
 
 export { flickCard, simulateFlick } from './play/flick.js';
 export type { FlickOptions, FlickPath, FlickStep, Magnet } from './play/flick.js';
+export { planToss, tossPiece, tossPose } from './play/toss.js';
+export type { Tossable, TossOptions, TossPlan, TossPose } from './play/toss.js';
 export {
   dealCards, flightDuration, landingsFor, popCard, shortestTurn, spinTarget, throwCard, throwLanding,
 } from './play/flight.js';

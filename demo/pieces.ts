@@ -66,7 +66,9 @@ export const scene = defineScene({
     const pot = pieces.stack({ id: 'pot', ...POT, messy: 1 });
     // Chips by hand: pick one up and the ones on it come too; drop or flick
     // them on another stack, or on the felt for a stack of their own.
-    pieces.draggable();
+    // Flicked hard, a single chip is tossed instead: end over end off the
+    // thumb, at the stack it was flicked towards.
+    pieces.draggable({ toss: true });
     pieces.on('move', (move) => { if (move.by === 'drag' || move.by === 'flick') say(); });
     // #endregion
 
@@ -92,6 +94,15 @@ export const scene = defineScene({
       await pieces.move(pot, banks.get(winner.id)!, { stagger: 25 });
       hands++;
       say();
+    }
+    // #endregion
+
+    // #region Tossing: a chip flipped off the thumb, end over end
+    function toss(): void {
+      const bank = banks.get('you')!;
+      const chip = bank.chips.at(-1);
+      if (!chip) return;
+      void pieces.toss(chip, pot).then(say);
     }
     // #endregion
 
@@ -162,6 +173,7 @@ export const scene = defineScene({
     button(ctx, 'collect', () => void collect());
     button(ctx, 'win', () => void win());
     button(ctx, 'next', nextHand);
+    button(ctx, 'toss', toss);
     button(ctx, 'roll', () => void roll());
     button(ctx, 'peg', () => void peg());
     button(ctx, 'colorup', () => { pieces.colorUp(banks.get('you')!); say(); });
@@ -170,7 +182,7 @@ export const scene = defineScene({
     say();
     expose({
       board, pieces, banks, bets, pot, dice, crib, dealerButton, seats: SEATS,
-      bet, collect, win, nextHand, roll, peg, save, restore, ante: ANTE,
+      bet, collect, win, toss, nextHand, roll, peg, save, restore, ante: ANTE,
     });
   },
 });

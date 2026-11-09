@@ -1,4 +1,5 @@
-import { type FlickOptions, type Magnet, flickCard } from '../play/flick.js';
+import { type FlickOptions, type Magnet, flickCard, simulateFlick } from '../play/flick.js';
+import { type TossOptions, tossPiece } from '../play/toss.js';
 import { popCard, throwCard } from '../play/flight.js';
 import type { Dispose } from '../runtime/disposables.js';
 import { animatorOf } from '../scene/animator.js';
@@ -75,6 +76,12 @@ export interface PiecesDragOptions {
   canTake?: (chip: Chip, stack: ChipStack) => boolean;
   /** Let go while moving, chips and tokens slide on: a flick's options, or false. Default on. */
   flick?: FlickOptions | false;
+  /**
+   * A single chip or token flicked hard is tossed instead - flipped off the
+   * thumb, end over end, at the stack it was flicked towards or else where
+   * the slide would have stopped. Its options, or true. Default off.
+   */
+  toss?: (TossOptions & { from?: number }) | boolean;
   /** Dragging a die throws it, rolled from this seed source. Default Math.random. */
   dice?: false | (() => number);
 }
@@ -179,6 +186,34 @@ export class Pieces implements StackHost {
   /** Whether any chip is in the air. */
   get busy(): boolean {
     return this.moving.size > 0;
+  }
+
+  /**
+   * Tosses one chip onto a stack, off the thumb: it leaves where it was at
+   * once, as a move does, and goes over and over through the air to land
+   * flat on top. Resolves when it has settled there.
+   */
+  toss(chip: Chip, to: ChipStack, options: TossOptions = {}): Promise<void> {
+    const from = chip.stack;
+    to.adopt(chip);
+    if (from && from !== to) from.layout(140);
+    this.emit('move', { chips: [chip], from, to, value: chip.value, by: 'toss' });
+    const flight = ++this.flights;
+    this.moving.set(chip, flight);
+    chip.depth = PIECE_FLYING_DEPTH + flight;
+    const place = to.place(to.chips.indexOf(chip));
+    return tossPiece(this.board, chip, place, { ...options, angle: options.angle ?? place.angle }).then(() => {
+      if (this.moving.get(chip) !== flight) return;
+      this.moving.delete(chip);
+      if (chip.stack === to && !chip.isDestroyed) {
+        const at = to.chips.indexOf(chip);
+        chip.depth = to.depthOf(at);
+        const p = to.place(at);
+        chip.setPosition(p.x, p.y, 0);
+        chip.angle = p.angle;
+      }
+      options.onRest?.();
+    });
   }
 
   /**
@@ -402,6 +437,33 @@ export class Pieces implements StackHost {
     const accepts = options.accepts ?? (() => true);
     const canTake = options.canTake ?? (() => true);
     const flicks = options.flick === false ? undefined : options.flick ?? {};
+    const tosses = options.toss === true ? {} : options.toss || undefined;
+    const tossFrom = tosses?.from ?? 520;
+    /**
+     * Where a flick at this velocity is going: the target it heads for most
+     * nearly, within a cone and a reach, or else where the slide would stop.
+     */
+    const aim = <T extends { x: number; y: number }>(start: { x: number; y: number; angle: number },
+      velocity: { x: number; y: number }, targets: readonly T[]): { at: { x: number; y: number }; target?: T } => {
+      const slide = simulateFlick(start, velocity, {
+        mode: '2d', half: { x: this.diameter / 2, y: this.diameter / 2 },
+        bounds: { left: 0, top: 0, right: board.width, bottom: board.height }, ...flicks,
+      }).steps.at(-1)!;
+      const speed = Math.hypot(velocity.x, velocity.y) || 1;
+      const reach = Math.hypot(slide.x - start.x, slide.y - start.y) * 1.6 + this.diameter * 2;
+      let best: { target: T; score: number } | undefined;
+      for (const target of targets) {
+        const dx = target.x - start.x;
+        const dy = target.y - start.y;
+        const d = Math.hypot(dx, dy);
+        if (d < 1 || d > reach) continue;
+        const cos = (dx * velocity.x + dy * velocity.y) / (d * speed);
+        if (cos < Math.cos(Math.PI / 7)) continue;
+        const score = cos - d / (reach * 4);
+        if (!best || score > best.score) best = { target, score };
+      }
+      return best ? { at: { x: best.target.x, y: best.target.y }, target: best.target } : { at: { x: slide.x, y: slide.y } };
+    };
     // Every chip and token from now on, too: change made, a stack restored.
     this.handling = true;
     for (const s of this.stackList) for (const c of s.chips) c.draggable = true;
@@ -455,6 +517,12 @@ export class Pieces implements StackHost {
       const speed = Math.hypot(pointer.velocity.x, pointer.velocity.y);
       if (was.lead instanceof Token) {
         const token = was.lead;
+        if (tosses && speed > tossFrom) {
+          const { at: to } = aim({ x: token.x, y: token.y, angle: token.angle }, pointer.velocity, []);
+          token.depth = PIECE_FLYING_DEPTH;
+          void tossPiece(board, token, to, { ...tosses, onRest: () => { token.settle(); tosses.onRest?.(); } });
+          return;
+        }
         if (flicks && speed > 160) {
           void flickCard(board, token, pointer.velocity, {
             half: { x: token.width / 2, y: token.height / 2 },
@@ -469,6 +537,21 @@ export class Pieces implements StackHost {
       const targets = this.stackList.filter((s) => s !== was.from && accepts(group, s, was.from));
       const over = targets.find((s) => s.contains(at, 6));
       if (over) { void this.move(group, over, { by: 'drag', arc: 6 }); return; }
+      if (tosses && group.length === 1 && speed > tossFrom) {
+        // Off the thumb: over and over through the air, and into the stack
+        // it was flicked at - or flat on the felt where it was going.
+        const { at: to, target } = aim({ x: lead.x, y: lead.y, angle: lead.angle }, pointer.velocity, targets);
+        if (target) { void this.toss(lead, target, tosses); return; }
+        lead.depth = PIECE_FLYING_DEPTH + 50_000;
+        void tossPiece(board, lead, to, {
+          ...tosses,
+          onRest: () => {
+            this.settleGroup(group, was.from, undefined, { x: lead.x, y: lead.y }, 'toss');
+            tosses.onRest?.();
+          },
+        });
+        return;
+      }
       if (flicks && speed > 160) {
         // Slides on, the others riding with the one held; drawn into a
         // stack that would take them, as a flicked card is into a pile.

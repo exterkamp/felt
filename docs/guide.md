@@ -36,7 +36,7 @@ await throwCard(board, cards[0], { x: 240, y: 320 }, { arc: 28 });
 | `src/gl/` | `Renderer` (one instanced program for every card and sprite), `Atlas` (every picture on a few 2048² layers of one texture array), `lens.ts` (the projection, written once in TypeScript and once in GLSL). |
 | `src/scene/` | `Board` (canvas, pixel ratio, fit, input, the sleep-when-still loop), `Node` and `Sprite`, `Tweens` with Phaser's config shape and ease names. |
 | `src/art/` | `CardSprite`, the card sheets, the face and back painters, suit pips, the court renderer and its worker; `paintFelt` and the running borders. |
-| `src/play/` | `throwCard`, `dealCards`, `layHand`, `orderStack`, `flipCard`, `riffleShuffle`, `flickCard`. |
+| `src/play/` | `throwCard`, `dealCards`, `layHand`, `orderStack`, `flipCard`, `riffleShuffle`, `flickCard`, `tossPiece`. |
 | `src/table/` | The `Table` - zones that own their cards, moves, rules, drag and flick, `sync` - and what builds on it: selection, tap-to-move and highlights; table state, undo history and saves. |
 | `src/ui/` | Readouts drawn on the board, toasts over it, and screen-reader announcements. |
 | `src/pieces/` | Chips and chip stacks, tokens, dice and a cribbage peg board. |
@@ -156,6 +156,18 @@ game decides which places are valid and passes only those, so a stack that
 can't take the card doesn't pull it. `onRest(path)` reports
 `path.caught`, the index of the magnet that took it. The Magnetic stacks
 demo has one stack per suit.
+
+**Tossing.** `tossPiece(board, piece, { x, y })` is the thumb flip: aimed,
+like a throw, but up on an arc and over and over end over end the whole way,
+about the line across its path (whichever way that is), down flat on a small
+bounce and a wobble. It lands the same side up unless `{ flip: true }`.
+`height`, `duration` and `turns` default from the distance; `twirl` turns it
+in the plane as it goes, and the face glints as it passes edge-on. A rotation
+about an arbitrary axis isn't one of angle, tilt and turn, so each frame is
+built as a matrix and taken apart again (`cardPose`) - the same picture.
+`planToss` and `tossPose` give the path without playing it. Made for chips
+and coins; a card can be tossed too. It runs on the `move` channel, so a
+press catches it.
 
 ## The table: making a game
 
@@ -430,7 +442,9 @@ const pot = pieces.stack({ id: 'pot', x: 240, y: 344 });
 await pieces.pay(bank, bet, 15);        // the fewest chips that make 15, breaking a 25 if it must
 await pieces.collect([bet], pot);       // every bet into the pot
 await pieces.move(pot, bank);           // and the pot to the winner
-pieces.draggable();                     // pick up a chip and the ones on it; drop or flick them
+pieces.draggable({ toss: true });       // pick up a chip and the ones on it; drop or flick them,
+                                        // and a lone chip flicked hard is tossed, end over end
+await pieces.toss(bank.chips.at(-1)!, pot);   // or toss one yourself
 
 const button = pieces.token({ label: 'D', x: 300, y: 228 });
 await button.moveTo(378, 302);
