@@ -38,10 +38,15 @@ export interface Offset {
    * Only how it is drawn - not its position, and not picking.
    */
   lens: number;
+  /**
+   * Gloss on its face, 0 to 1: light catching it as it tips. Only how it is
+   * drawn. Optional, so an offset written before it existed still fits.
+   */
+  shine?: number;
 }
 
 export const zeroOffset = (): Offset =>
-  ({ x: 0, y: 0, z: 0, angle: 0, tilt: 0, turn: 0, bow: 0, scale: 1, lens: 0 });
+  ({ x: 0, y: 0, z: 0, angle: 0, tilt: 0, turn: 0, bow: 0, scale: 1, lens: 0, shine: 0 });
 
 /** Something that can wear offsets: every Node. */
 export interface Layered {

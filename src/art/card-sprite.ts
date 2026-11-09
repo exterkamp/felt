@@ -284,7 +284,7 @@ export class CardSprite<S extends string = Suit> extends Node {
     out[o + 28] = 0xffffff;
     out[o + 29] = p.lens;
     out[o + 30] = 0;
-    out[o + 31] = 0;
+    out[o + 31] = Math.max(0, Math.min(1, p.shine));
     // In the air - picked up, thrown - its shadow is cast on the felt rather
     // than drawn round it in its own plane: a card rolled forty degrees above
     // the table should not carry a halo rolled forty degrees with it. So the
@@ -304,6 +304,7 @@ export class CardSprite<S extends string = Suit> extends Node {
       out[o + 22] = 2;                                  // a shadow and nothing else
       out[o + 29] = 0;
       out[o + 30] = p.z;                                // how high the card is
+      out[o + 31] = 0;                                  // a shadow does not shine
       return 2;
     }
     return true;

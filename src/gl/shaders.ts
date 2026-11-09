@@ -38,7 +38,7 @@ layout(location = 4) in vec4 i_front;   // uv rect of the side facing the camera
 layout(location = 5) in vec4 i_back;    // uv rect of the side facing away
 layout(location = 6) in vec4 i_layers;  // front layer, back layer, kind, shadow
 layout(location = 7) in vec4 i_edge;    // front edge rgb, back edge rgb, their widths
-layout(location = 8) in vec4 i_tint;    // tint rgb, extra lens, a shadow's lift, unused
+layout(location = 8) in vec4 i_tint;    // tint rgb, extra lens, a shadow's lift, shine
 
 out vec2 v_local;
 flat out vec4 v_front;
@@ -51,6 +51,10 @@ flat out float v_alpha;
 flat out float v_lift;
 flat out float v_margin;
 flat out vec2 v_down;
+flat out vec3 v_normal;  // the front's normal, on the board
+// The same in the card's own frame - how it is tipped and rolled - and, in w,
+// how much it shines. One vector rather than two: varyings are few on a phone.
+flat out vec4 v_lean;
 
 vec3 rgb(float packed) {
   return vec3(floor(packed / 65536.0), mod(floor(packed / 256.0), 256.0), mod(packed, 256.0)) / 255.0;
@@ -101,6 +105,10 @@ void main() {
   // Which way is down the table, in the card's own frame: a shadow falls
   // towards the bottom of the board whichever way the card is turned.
   v_down = vec2(cy < 0.0 ? -sa : sa, ct < 0.0 ? -ca : ca);
+  // (0, 0, 1) through the same turn and tilt, then the same angle.
+  vec3 lean = vec3(sy, -st * cy, ct * cy);
+  v_normal = vec3(ca * lean.x - sa * lean.y, sa * lean.x + ca * lean.y, lean.z);
+  v_lean = vec4(lean, castShadow ? 0.0 : i_tint.w);
 }
 `;
 
@@ -121,8 +129,38 @@ flat in float v_alpha;
 flat in float v_lift;
 flat in float v_margin;
 flat in vec2 v_down;
+flat in vec3 v_normal;
+flat in vec4 v_lean;
 
 out vec4 colour;
+
+// Light over the top-left of the table, the way the shadows already fall.
+const vec3 LIGHT = vec3(-0.36, -0.48, 0.8);
+
+// A card's face with gloss on it, premultiplied in and out. Three parts: the
+// face dims a little as it tips away from the light, a broad sheen comes up
+// as it tips towards it, and a streak of glare lies across the diagonal
+// wherever the card's lean puts it - so as a held card swivels the glare
+// slides over it and off the edge, the way light runs across a laminated card
+// turned in the hand. On white paper the streak only shows against the
+// dimming, which is why there is dimming at all.
+vec4 shineOn(vec4 card, vec2 local, vec2 size, bool facing) {
+  float shine = v_lean.w;
+  vec3 n = facing ? v_normal : -v_normal;
+  vec3 lean = facing ? v_lean.xyz : -v_lean.xyz;
+  vec3 light = normalize(LIGHT);
+  vec3 h = normalize(light + vec3(0.0, 0.0, 1.0));
+  float sheen = pow(max(dot(n, h), 0.0), 30.0);
+  vec2 q = local / size;                       // -0.5 to 0.5 across the face
+  float along = (q.x + q.y) * 0.7071;          // up the diagonal
+  float centre = 0.12 - (lean.x + lean.y) * 1.8;
+  float streak = exp(-pow((along - centre) / 0.11, 2.0));
+  float thin = exp(-pow((along - centre - 0.21) / 0.035, 2.0));
+  float lambert = max(dot(n, light), 0.0);
+  float shade = 1.0 - shine * (0.06 + 0.16 * (1.0 - lambert)) * (1.0 - max(streak, thin));
+  vec3 glare = vec3(0.25 * sheen + 0.45 * streak + 0.3 * thin) * shine * card.a;
+  return vec4(min(card.rgb * shade + glare, vec3(card.a)), card.a);
+}
 
 vec3 rgb(float packed) {
   return vec3(floor(packed / 65536.0), mod(floor(packed / 256.0), 256.0), mod(packed, 256.0)) / 255.0;
@@ -176,6 +214,7 @@ void main() {
     float edge = clamp((d + edgeWidth) / aa + 0.5, 0.0, 1.0) * step(0.001, edgeWidth);
     card = vec4(mix(card.rgb, edgeColour * card.a, edge), card.a);
     card *= body;
+    if (v_lean.w > 0.0) card = shineOn(card, v_local, size, facing);
   }
 
   // Under an opaque card nothing of the shadow shows, and that is most of

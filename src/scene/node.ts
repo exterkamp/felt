@@ -44,6 +44,7 @@ export abstract class Node implements InstanceItem, Layered {
   protected _tilt = 0;
   protected _turn = 0;
   protected _bow = 0;
+  protected _shine = 0;
   protected _scaleX = 1;
   protected _scaleY = 1;
   protected _alpha = 1;
@@ -107,6 +108,13 @@ export abstract class Node implements InstanceItem, Layered {
   /** How deep the bow down its length is, as a fraction of its height. */
   get bow(): number { return this._bow; }
   set bow(v: number) { if (v !== this._bow) { this._bow = v; this.board.touch(); } }
+  /**
+   * Gloss on a card's face, 0 to 1: a sheen that follows how it is tipped
+   * and a streak of glare that slides across it as it swivels. Cards only;
+   * a held card wears some of its own (see PickUpOptions.shine).
+   */
+  get shine(): number { return this._shine; }
+  set shine(v: number) { if (v !== this._shine) { this._shine = v; this.board.touch(); } }
   get scaleX(): number { return this._scaleX; }
   set scaleX(v: number) { if (v !== this._scaleX) { this._scaleX = v; this.board.touch(); } }
   get scaleY(): number { return this._scaleY; }
@@ -158,15 +166,17 @@ export abstract class Node implements InstanceItem, Layered {
    * starting off another's half-way point.
    */
   get shown(): { x: number; y: number; z: number; angle: number; tilt: number; turn: number;
-    bow: number; scaleX: number; scaleY: number; lens: number } {
+    bow: number; scaleX: number; scaleY: number; lens: number; shine: number } {
     const pose = {
       x: this._x, y: this._y, z: this._z, angle: this._angle, tilt: this._tilt,
       turn: this._turn, bow: this._bow, scaleX: this._scaleX, scaleY: this._scaleY, lens: 0,
+      shine: this._shine,
     };
     for (const o of this.offsets) {
       pose.x += o.x; pose.y += o.y; pose.z += o.z; pose.angle += o.angle;
       pose.tilt += o.tilt; pose.turn += o.turn; pose.bow += o.bow;
       pose.scaleX *= o.scale; pose.scaleY *= o.scale; pose.lens += o.lens ?? 0;
+      pose.shine += o.shine ?? 0;
     }
     return pose;
   }
@@ -265,11 +275,12 @@ export abstract class Node implements InstanceItem, Layered {
     p.x = this._x; p.y = this._y; p.z = this._z; p.angle = this._angle; p.tilt = this._tilt;
     p.turn = this._turn; p.bow = this._bow; p.scaleX = this._scaleX; p.scaleY = this._scaleY;
     p.lens = 0;
+    p.shine = this._shine;
     return p;
   }
 
   private readonly drawnPose: Node['shown'] = {
-    x: 0, y: 0, z: 0, angle: 0, tilt: 0, turn: 0, bow: 0, scaleX: 1, scaleY: 1, lens: 0,
+    x: 0, y: 0, z: 0, angle: 0, tilt: 0, turn: 0, bow: 0, scaleX: 1, scaleY: 1, lens: 0, shine: 0,
   };
 }
 
