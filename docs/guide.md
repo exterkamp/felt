@@ -118,13 +118,16 @@ swings round in the plane. It is seen through a stronger lens of its own
 while held, so its tipping reads as depth, and its shadow is cast flat on the
 felt beneath it rather than in its own plane. Springs settle it when the hand
 stops, with one small swing back and no wobble, and it drops back when let
-go. This is the board's own behaviour, so no game code is
+go. It catches the light as it comes up: its face takes on a gloss, and a
+streak of glare slides across it as it swivels. This is the board's own behaviour, so no game code is
 needed for it. It is one offset on the card, so the game's own `setPosition`,
 layouts and throws compose with it. A `dragstart` handler can
 `pointer.refuse()` a card that is not to be moved (one under the top of a
 pile). Tune it with `createBoard({ pickUp: { lift, maxSwivel, maxSway,
-stiffness, damping, perspective } })`, or turn it off with `pickUp: false`; on a flat
-board (`fov: 0`) it is off.
+stiffness, damping, perspective, shine } })` (`shine: 0` keeps a held card
+matte), or turn it off with `pickUp: false`; on a flat board (`fov: 0`) it is
+off. Any card can be given gloss of its own with `card.shine = 0.5`, from 0
+to 1; it is only how the card is drawn.
 
 **Flicking.** Let go of a dragged card while it is still moving and it keeps
 going. `pointer.velocity` is how fast the pointer was moving over its last

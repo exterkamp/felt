@@ -39,6 +39,11 @@ export interface PickUpOptions {
    * 1 sees it from half the board's camera distance. Default 1.8.
    */
   perspective?: number;
+  /**
+   * Gloss on a held card, 0 to 1: it catches the light as it is lifted and
+   * the glare slides across it as it swivels. 0 turns it off. Default 0.7.
+   */
+  shine?: number;
 }
 
 /** What a picked-up card needs to be: something with a pose that wears offsets. */
@@ -112,6 +117,7 @@ export class PickUp {
       // One small overshoot, not a wobble: 0.42 swung back and forth.
       damping: options.damping ?? 0.62,
       perspective: options.perspective ?? 1.8,
+      shine: options.shine ?? 0.7,
     };
   }
 
@@ -199,6 +205,7 @@ export class PickUp {
       off.tilt = o.tilt;
       off.turn = o.turn;
       off.lens = o.lens;
+      off.shine = o.shine;
       f.offsetChanged();
     });
   }
@@ -266,6 +273,9 @@ export class PickUp {
       held.offset.tilt = held.tilt.value;
       held.offset.angle = held.angle.value;
       held.offset.lens = Math.max(0, held.lens.value);
+      // The gloss comes up with the card and goes back down with it, so a
+      // card lying on the felt is as matte as it always was.
+      held.offset.shine = o.lift > 0 ? o.shine * Math.min(1, held.offset.z / o.lift) : 0;
       node.offsetChanged();
       this.follow(held);
       if (held.down && held.z.value <= 0.05 && held.z.speed <= 0.5
