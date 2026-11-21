@@ -224,6 +224,16 @@ export class Tweens {
     return this.active.length + this.tickers.size;
   }
 
+  /**
+   * Stops everything: every tween where it is (promises resolve, onComplete
+   * does not run) and every ticker. For a game tearing its board down to
+   * start again on the same one.
+   */
+  clear(): void {
+    for (const tween of this.active.splice(0)) tween.stop();
+    this.tickers.clear();
+  }
+
   /** Advances every tween by `ms`. Answers whether any are still running. */
   update(ms: number): boolean {
     // Copied first: a tween's onComplete may well add the next one.

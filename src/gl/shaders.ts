@@ -117,6 +117,7 @@ precision highp float;
 precision highp sampler2DArray;
 uniform sampler2DArray u_atlas;
 uniform float u_frontFacing; // 1 if the GPU's front face is the camera-facing one
+uniform float u_additiveAlpha; // 1 where the page composites the canvas: see the sprite branch
 
 in vec2 v_local;
 flat in vec4 v_front;
@@ -202,7 +203,12 @@ void main() {
     if (colour.a <= 0.0) discard;
     // Premultiplied, so an alpha taken away leaves the colour to be added:
     // the blend is ONE, ONE_MINUS_SRC_ALPHA, and at nought that is a sum.
-    colour.a *= 1.0 - v_layers.w;
+    // On a transparent board the page composites the canvas, and a pixel of
+    // colour with no alpha is not a colour it will show: there the light
+    // keeps as much alpha as its brightest channel - still light on a dark
+    // cloth, and a pixel the page can draw.
+    float light = max(colour.r, max(colour.g, colour.b));
+    colour.a = mix(colour.a, light * u_additiveAlpha, v_layers.w);
     return;
   }
 

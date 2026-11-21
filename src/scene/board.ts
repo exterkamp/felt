@@ -326,8 +326,10 @@ export class Board implements EngineMember {
   private rebuild(): void {
     const old = this._canvas;
     const fresh = this.makeCanvas();
-    fresh.style.width = old.style.width;
-    fresh.style.height = old.style.height;
+    // Everything the page put on the old one - its fitted size, and anything a
+    // game styled it with, a picture of the table behind a transparent board -
+    // goes over to the new.
+    fresh.style.cssText = old.style.cssText;
     let renderer: Renderer;
     try {
       renderer = new Renderer(fresh, this.atlas, {

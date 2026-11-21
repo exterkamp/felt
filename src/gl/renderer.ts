@@ -111,6 +111,8 @@ export class Renderer {
   uploads = 0;
   uploadedPixels = 0;
   readonly maxTextureLayers: number;
+  /** Whether the page shows through: what an additive sprite has to leave in alpha. */
+  private readonly transparent: boolean;
   /** The trail's own texture and framebuffer, made when first wanted. */
   private trailTexture: WebGLTexture | null = null;
   private trailFramebuffer: WebGLFramebuffer | null = null;
@@ -134,6 +136,7 @@ export class Renderer {
     });
     if (!gl) throw new Error('felt: this browser has no WebGL2');
     this.gl = gl;
+    this.transparent = options.transparent ?? false;
     this.maxTextureLayers = gl.getParameter(gl.MAX_ARRAY_TEXTURE_LAYERS) as number;
     // A renderer made to replace a dead one counts on from it.
     this.generation = options.generation ?? 0;
@@ -168,7 +171,7 @@ export class Renderer {
     const gl = this.gl;
     this.generation++;
     this.cardProgram = link(gl, INSTANCE_VERTEX, INSTANCE_FRAGMENT);
-    this.cardUniforms = uniforms(gl, this.cardProgram, [...PROJECTION_UNIFORMS, 'u_frontFacing']);
+    this.cardUniforms = uniforms(gl, this.cardProgram, [...PROJECTION_UNIFORMS, 'u_frontFacing', 'u_additiveAlpha']);
 
     // The card: two columns and CARD_ROWS rows of quads, unit square.
     const grid: number[] = [];
@@ -375,6 +378,8 @@ export class Renderer {
       this.setProjection(this.cardUniforms, camera);
       gl.frontFace(gl.CW);
       gl.uniform1f(this.cardUniforms['u_frontFacing'], 1);
+      // The trail is a picture drawn later over the board: always keep alpha.
+      gl.uniform1f(this.cardUniforms['u_additiveAlpha'], 1);
       gl.bindVertexArray(this.cardVao);
       this.pointInstances(0, this.stampBuffer);
       if (trail.bowed) gl.drawElementsInstanced(gl.TRIANGLES, this.indexCount, gl.UNSIGNED_SHORT, 0, trail.count);
@@ -471,6 +476,7 @@ export class Renderer {
       // the camera; the shader shows the back on the other.
       gl.frontFace(gl.CW);
       gl.uniform1f(this.cardUniforms['u_frontFacing'], 1);
+      gl.uniform1f(this.cardUniforms['u_additiveAlpha'], this.transparent ? 1 : 0);
       gl.bindVertexArray(this.cardVao);
       this.pointInstances(0);
       if (bowed) {

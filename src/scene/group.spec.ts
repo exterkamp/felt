@@ -108,4 +108,16 @@ describe('timers and counters on the tween clock', () => {
     expect(seen[0]).toBeCloseTo(15);
     expect(seen.at(-1)).toBe(20);
   });
+
+  it('clears everything at once: no callbacks, nothing left running', () => {
+    const tweens = new Tweens();
+    let fired = 0;
+    tweens.delayedCall(10, () => fired++);
+    tweens.add({ targets: { x: 0 }, x: 1, duration: 10, onComplete: () => fired++ });
+    tweens.tick(() => true);
+    tweens.clear();
+    tweens.update(50);
+    expect(fired).toBe(0);
+    expect(tweens.count).toBe(0);
+  });
 });
