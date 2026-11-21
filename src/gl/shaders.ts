@@ -200,6 +200,9 @@ void main() {
     vec4 texel = texture(u_atlas, vec3(uv, layer));
     colour = vec4(texel.rgb * v_tint, texel.a) * v_alpha;
     if (colour.a <= 0.0) discard;
+    // Premultiplied, so an alpha taken away leaves the colour to be added:
+    // the blend is ONE, ONE_MINUS_SRC_ALPHA, and at nought that is a sum.
+    colour.a *= 1.0 - v_layers.w;
     return;
   }
 
@@ -254,5 +257,28 @@ void main() {
   float alpha = card.a + shadow * (1.0 - card.a);
   colour = vec4(card.rgb, alpha) * v_alpha;
   if (colour.a <= 0.002) discard;
+}
+`;
+
+// The trail: one full-board picture that cards are stamped into and never
+// rubbed out, drawn under everything else (see Trail in scene/trail.ts).
+export const TRAIL_VERTEX = /* glsl */ `#version 300 es
+precision highp float;
+layout(location = 0) in vec2 a_corner;
+out vec2 v_uv;
+void main() {
+  v_uv = a_corner;
+  gl_Position = vec4(a_corner * 2.0 - 1.0, 0.0, 1.0);
+}
+`;
+
+export const TRAIL_FRAGMENT = /* glsl */ `#version 300 es
+precision highp float;
+uniform sampler2D u_trail;
+uniform float u_alpha;
+in vec2 v_uv;
+out vec4 colour;
+void main() {
+  colour = texture(u_trail, v_uv) * u_alpha;
 }
 `;

@@ -11,6 +11,9 @@ export * from './core/index.js';
 export { Board, createBoard } from './scene/board.js';
 export type { BoardOptions, BoardPointer, TextStyle } from './scene/board.js';
 export { Node } from './scene/node.js';
+export { Group } from './scene/group.js';
+export type { FramePose } from './scene/group.js';
+export { Trail } from './scene/trail.js';
 export { Sprite } from './scene/sprite.js';
 export type { SpriteOptions } from './scene/sprite.js';
 export { Tween, Tweens } from './scene/tweens.js';
@@ -48,12 +51,12 @@ export { PERSISTED_ART_VERSION, PersistedArt } from './art/persisted-art.js';
 export type { LoadingReport, LoadingStage, LoadingStageId } from './art/loading.js';
 export type { ArtKind, ArtStatus } from './art/card-art.js';
 export { BackSheet, CardSheets, FaceSheet, resolveStyle } from './art/card-sheets.js';
-export type { CardStyle, ResolvedStyle } from './art/card-sheets.js';
+export type { CardStyle, FaceOverlay, OverlayFace, ResolvedStyle } from './art/card-sheets.js';
 export {
   ArtStore, CardArt, STANDARD_SUIT_ART, loadCardArt, preloadCardArt, suitTexture, ensureArt,
 } from './art/card-art.js';
 export type { CardArtOptions, CourtCaches } from './art/card-art.js';
-export { courtTextureKey, renderCourt, renderCourts } from './art/court-art.js';
+export { courtTextureKey, renderCourt, renderCourtCanvas, renderCourts } from './art/court-art.js';
 export type { RenderCourtsOptions } from './art/court-art.js';
 export { FELT_INKS, FeltPaint, loadSvg, paintFelt, paintFeltSvg } from './art/felt-paint.js';
 export { BORDER_PATTERNS, border, paintFeltFrame } from './art/felt-borders.js';
