@@ -20,6 +20,11 @@ export interface SpriteOptions {
   /** Where (0-1 of its size) its x, y is. Default the middle. */
   originX?: number;
   originY?: number;
+  /**
+   * Adds its light to what is under it rather than covering it: sparks, a
+   * flash, a glow on the cloth. 0-1, from covering to adding. Default 0.
+   */
+  additive?: number;
 }
 
 export interface SpriteHost extends NodeHost {
@@ -31,6 +36,7 @@ export class Sprite extends Node {
   private _width: number;
   private _height: number;
   private _tint: number;
+  private _additive: number;
   originX: number;
   originY: number;
   /** Lets go of the region when destroyed. */
@@ -43,6 +49,7 @@ export class Sprite extends Node {
     this._width = options.width ?? (region ? region.width / board.pixelRatio : 0);
     this._height = options.height ?? (region ? region.height / board.pixelRatio : 0);
     this._tint = options.tint ?? 0xffffff;
+    this._additive = options.additive ?? 0;
     this.originX = options.originX ?? 0.5;
     this.originY = options.originY ?? 0.5;
     this._x = options.x ?? 0;
@@ -59,6 +66,10 @@ export class Sprite extends Node {
   set height(v: number) { this._height = v; this.board.touch(); }
   get tint(): number { return this._tint; }
   set tint(v: number) { this._tint = v; this.board.touch(); }
+  /** 0 covers what is under it, 1 adds to it. */
+  get additive(): number { return this._additive; }
+  set additive(v: number) { this._additive = v; this.board.touch(); }
+  setTint(tint: number): this { this.tint = tint; return this; }
   get region(): Region | undefined { return this._region; }
   set region(v: Region | undefined) { this._region = v; this.board.touch(); }
 
@@ -121,7 +132,8 @@ export class Sprite extends Node {
     out[o + 20] = region.page;
     out[o + 21] = region.page;
     out[o + 22] = 0;   // a sprite
-    out[o + 23] = 0;   // no shadow
+    // A sprite has no shadow; the slot says how much it adds instead of covering.
+    out[o + 23] = this._additive > 0 ? Math.min(1, this._additive) : 0;
     out[o + 24] = 0;
     out[o + 25] = 0;
     out[o + 26] = 0;

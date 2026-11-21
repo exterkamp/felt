@@ -506,6 +506,43 @@ more, and a third tap calls that off. Throwing a card again to where it is
 already flying, or re-fanning a hand to the places its cards are already
 going, carries on rather than starting over.
 
+## Frames, light, trails and overlays
+
+Four things a real game needed that the demos never had - web-nert, the
+Nertz game, asked for each of them on its way off Phaser:
+
+- **Groups.** `board.group({ x, y, angle, scale, parent })` is a frame: put
+  a node in it (`node.parent = group`) and its `x`, `y`, `angle` and scale
+  are the group's, carried out onto the board for drawing and picking.
+  Groups nest. They are not containers - depth still sorts every node on the
+  board, whatever frame it is in - so a player's side of the table laid out
+  once and turned to face its edge gives each seat a depth band of its own.
+  `node.reparent(group | undefined)` moves a node between frames without
+  moving it on screen, which is how a card leaves a player's side to be
+  thrown. `group.toBoard(x, y)` and `fromBoard` convert points.
+- **Light.** `sprite.additive = 1` adds a sprite's light to what is under it
+  rather than covering it - sparks, a flash, a glow on the cloth. On a
+  transparent board the page composites the canvas, so there the light keeps
+  as much alpha as its brightest channel: still light on a dark cloth, and a
+  pixel the browser will show.
+- **Trails.** `board.trail()` is a picture the size of the board, under
+  everything on it, that nodes are `stamp`ed into and that stays until
+  `clear()`ed - the streak a card leaves bouncing across the table at the
+  end of a won game. It lives on the GPU only; a lost context brings it back
+  empty.
+- **Face overlays.** `CardStyle.overlay` is `{ key, paint(pen, face) }`: a
+  picture printed over every face of that style, in card units from the
+  centre, with the court portrait's rectangle to hand. It is part of the
+  sheet - a badge on a card is a card drawn from a sheet with the badge on
+  it, and it follows the face through every flip because it *is* the face.
+  Overlay sheets paint only the faces that are shown.
+
+And the small ones: `board.resize(width, height, ratio)`, `board.paused`
+(holds every tween, ticker and `update`), `tweens.delayedCall(ms, fn)` and
+`tweens.counter({ from, to, onUpdate })` on the tween clock,
+`tweens.clear()`, and `renderCourtCanvas(rank, suit, palette, width)` - a
+court portrait with no board at all, for a card drawn in HTML.
+
 ## The engine, scenes and the page
 
 felt is a game engine, not only a renderer: see [`runtime.md`](runtime.md) for how it
@@ -633,6 +670,11 @@ The names were kept wherever the idea survived, so a port is mostly deleting
 | `renderCourts(this, palette, opts)` | `renderCourts(board, palette, opts)` |
 | `suitTexture(scene, suit, color)` → key | `suitTexture(board, suit, color, size)` → region; `board.image(region, ...)` |
 | `new TuckBox(this, x, y, opts)` + `update` | not carried over |
+| `this.add.container(x, y)` holding a seat | `board.group({ x, y, angle, scale })`; `node.parent = group` |
+| `this.add.renderTexture(...)` + `draw` | `board.trail()` + `trail.stamp(node)` |
+| `setBlendMode(Phaser.BlendModes.ADD)` | `sprite.additive = 1` |
+| `this.time.delayedCall`, `tweens.addCounter` | `board.tweens.delayedCall`, `board.tweens.counter` |
+| children added to a card (badges) | `CardStyle.overlay`, painted into the sheet |
 | `toBoard(this, pointer)` | pointers arrive in board units already; `board.toBoard(clientX, clientY)` |
 | `this.input.setDraggable(sprite)` + `drag` events | `sprite.draggable = true`; `board.on('dragstart' \| 'drag' \| 'dragend')` |
 | `this.add.text`, `this.add.graphics` | `board.text(...)`, `board.graphic(w, h, paint)` |

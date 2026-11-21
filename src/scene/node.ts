@@ -3,6 +3,7 @@ import { INSTANCE_FLOATS } from '../gl/shaders.js';
 import type { InstanceItem } from '../gl/renderer.js';
 import { Mat3, cardRotation, unprojectOntoPlane } from '../gl/lens.js';
 import type { Layered, Offset } from './animator.js';
+import type { Group } from './group.js';
 
 // Anything drawn on the board: a position, an orientation, a size and a
 // place in the order.
@@ -72,6 +73,12 @@ export abstract class Node implements InstanceItem, Layered {
   occluded = false;
   /** Anything a game wants to hang off it. */
   data: Record<string, unknown> = {};
+  /**
+   * The frame it is laid out in, if not the board's own. Its x, y, angle
+   * and scale are then the group's, and only what is drawn and picked is
+   * carried out onto the board. Depth still sorts across the whole board.
+   */
+  private _parent: Group | undefined;
 
   /**
    * Not on the board yet: a subclass calls `attach()` as the last line of its
@@ -134,6 +141,40 @@ export abstract class Node implements InstanceItem, Layered {
   get displayHeight(): number { return this.height * Math.abs(this.shown.scaleY); }
   get isDestroyed(): boolean { return this.destroyed; }
 
+  get parent(): Group | undefined { return this._parent; }
+  set parent(v: Group | undefined) {
+    if (v === this._parent) return;
+    this._parent = v;
+    this.board.touch();
+  }
+
+  /**
+   * Moves it into another frame (or the board's, with undefined) without
+   * moving it on screen: its resting pose is rewritten in the new frame's
+   * terms. What a flight does with a card lifted out of a player's side.
+   */
+  reparent(group: Group | undefined): this {
+    if (group === this._parent) return this;
+    const pose = { x: this._x, y: this._y, z: this._z, angle: this._angle,
+      scaleX: this._scaleX, scaleY: this._scaleY };
+    this._parent?.toBoardPose(pose);
+    if (group) {
+      const local = group.fromBoard(pose.x, pose.y);
+      const s = group.boardScale;
+      pose.x = local.x;
+      pose.y = local.y;
+      pose.z /= s;
+      pose.angle -= group.boardAngle;
+      pose.scaleX /= s;
+      pose.scaleY /= s;
+    }
+    this._x = pose.x; this._y = pose.y; this._z = pose.z; this._angle = pose.angle;
+    this._scaleX = pose.scaleX; this._scaleY = pose.scaleY;
+    this._parent = group;
+    this.board.touch();
+    return this;
+  }
+
   // Phaser's chainable setters, for code that came from there.
   setPosition(x: number, y: number, z = this._z): this { this.x = x; this.y = y; this.z = z; return this; }
   setAngle(degrees: number): this { this.angle = degrees; return this; }
@@ -178,6 +219,7 @@ export abstract class Node implements InstanceItem, Layered {
       pose.scaleX *= o.scale; pose.scaleY *= o.scale; pose.lens += o.lens ?? 0;
       pose.shine += o.shine ?? 0;
     }
+    this._parent?.toBoardPose(pose);
     return pose;
   }
 
@@ -242,6 +284,7 @@ export abstract class Node implements InstanceItem, Layered {
 
   sameFootprint(other: Node): boolean {
     if (this.offsets.length || other.offsets.length) return false;
+    if (this._parent !== other._parent) return false;
     return other._x === this._x && other._y === this._y && other._z === this._z
       && other._angle === this._angle && other._tilt === this._tilt && other._turn === this._turn
       && other._bow === this._bow && other._scaleX === this._scaleX && other._scaleY === this._scaleY
@@ -270,7 +313,7 @@ export abstract class Node implements InstanceItem, Layered {
    * frame on a busy table. Valid until the next call.
    */
   private writePoseValues(): Node['shown'] {
-    if (this.offsets.length) return this.shown;
+    if (this.offsets.length || this._parent) return this.shown;
     const p = this.drawnPose;
     p.x = this._x; p.y = this._y; p.z = this._z; p.angle = this._angle; p.tilt = this._tilt;
     p.turn = this._turn; p.bow = this._bow; p.scaleX = this._scaleX; p.scaleY = this._scaleY;

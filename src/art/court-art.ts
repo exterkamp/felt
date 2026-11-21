@@ -19,7 +19,8 @@ import {
   partBackgroundPixels,
 } from '../core/index.js';
 import type { Board } from '../scene/board.js';
-import { CPU, CardArt, CourtCaches } from './card-art.js';
+import { ArtStore, CPU, CardArt, CourtCaches } from './card-art.js';
+import { Engine, engine as pageEngine } from '../runtime/engine.js';
 import { courtWorkerPool, courtSlots } from './court-worker.js';
 
 // Court portraits, rendered while the game is running.
@@ -211,48 +212,7 @@ async function paintCourt(
       }
     }
 
-    // The whole page first, big enough that the window cut out of it lands at
-    // the size asked for.
-    const source = courtSourceSize(width);
-    const page = document.createElement('canvas');
-    page.width = source.width;
-    page.height = source.height;
-    const pen = page.getContext('2d', CPU);
-    if (!pen) throw new Error('court art: no 2d context');
-    pen.drawImage(image, 0, 0, source.width, source.height);
-
-    // Then the source's own marks go. In the highlight rather than the stock,
-    // because at this point the whole background is the highlight and the
-    // wipe has to join it - a patch of stock here would be an island the
-    // flood below never reaches, and would stay the wrong color if the two
-    // ever differ.
-    const highlight = courtHighlight(palette);
-    const paper = courtPaper(palette);
-    pen.fillStyle = highlight;
-    for (const wipe of courtWipeRects(source, cut)) {
-      pen.fillRect(wipe.x, wipe.y, wipe.width, wipe.height);
-    }
-
-    const crop = courtCropRect(source, cut);
-    const out = document.createElement('canvas');
-    out.width = Math.round(width);
-    out.height = courtArtHeight(width, cut);
-    const cropPen = out.getContext('2d', CPU);
-    if (!cropPen) throw new Error('court art: no 2d context');
-    cropPen.drawImage(page, crop.x, crop.y, crop.width, crop.height,
-      0, 0, out.width, out.height);
-
-    // And the background goes back to the stock, where they differ. A deck
-    // that has not asked for the two to differ pays nothing for this.
-    //
-    // After the crop, not before. Some of the background is walled off from
-    // the card's margin by the figure itself - the wedge under a Queen's
-    // headdress is closed at the page but open at the edge of the cut - so
-    // running this on the finished art is what lets the edges reach it.
-    if (paper.toLowerCase() !== highlight.toLowerCase()) {
-      partBackground(cropPen, out.width, out.height, highlight, paper,
-        courtSeeds(rank, suit, cut));
-    }
+    const out = paintCourtCanvas(image, rank, suit, palette, width, cut);
 
     const art = CardArt.of(board);
     if (!board.engine.destroyed && !art.has(key)) art.provide(key, out);
@@ -260,6 +220,69 @@ async function paintCourt(
   }
 }
 
+
+
+/** The main thread's half of a court: the page drawn, wiped, cropped and parted. */
+function paintCourtCanvas(image: Page, rank: CourtRank, suit: string, palette: CourtPalette,
+  width: number, cut: CourtCut): HTMLCanvasElement {
+  // The whole page first, big enough that the window cut out of it lands at
+  // the size asked for.
+  const source = courtSourceSize(width);
+  const page = document.createElement('canvas');
+  page.width = source.width;
+  page.height = source.height;
+  const pen = page.getContext('2d', CPU);
+  if (!pen) throw new Error('court art: no 2d context');
+  pen.drawImage(image, 0, 0, source.width, source.height);
+
+  // Then the source's own marks go. In the highlight rather than the stock,
+  // because at this point the whole background is the highlight and the
+  // wipe has to join it - a patch of stock here would be an island the
+  // flood below never reaches, and would stay the wrong color if the two
+  // ever differ.
+  const highlight = courtHighlight(palette);
+  const paper = courtPaper(palette);
+  pen.fillStyle = highlight;
+  for (const wipe of courtWipeRects(source, cut)) {
+    pen.fillRect(wipe.x, wipe.y, wipe.width, wipe.height);
+  }
+
+  const crop = courtCropRect(source, cut);
+  const out = document.createElement('canvas');
+  out.width = Math.round(width);
+  out.height = courtArtHeight(width, cut);
+  const cropPen = out.getContext('2d', CPU);
+  if (!cropPen) throw new Error('court art: no 2d context');
+  cropPen.drawImage(page, crop.x, crop.y, crop.width, crop.height,
+    0, 0, out.width, out.height);
+
+  // And the background goes back to the stock, where they differ. A deck
+  // that has not asked for the two to differ pays nothing for this.
+  //
+  // After the crop, not before. Some of the background is walled off from
+  // the card's margin by the figure itself - the wedge under a Queen's
+  // headdress is closed at the page but open at the edge of the cut - so
+  // running this on the finished art is what lets the edges reach it.
+  if (paper.toLowerCase() !== highlight.toLowerCase()) {
+    partBackground(cropPen, out.width, out.height, highlight, paper,
+      courtSeeds(rank, suit, cut));
+  }
+  return out;
+}
+
+/**
+ * A court portrait as a canvas of its own, with no board: for a page that
+ * shows a card in HTML - a deck editor, a pack being opened - in the same
+ * art the table draws. Shares the engine's caches of sources and pages, so
+ * a portrait the table already rasterised is not decoded again.
+ */
+export async function renderCourtCanvas(
+  rank: CourtRank, suit: string, palette: CourtPalette, width: number,
+  cut: CourtCut = 'half', owner: Engine = pageEngine(),
+): Promise<HTMLCanvasElement> {
+  const image = await courtPage(ArtStore.of(owner).courts, rank, suit, palette, width);
+  return paintCourtCanvas(image, rank, suit, palette, width, cut);
+}
 
 
 /**

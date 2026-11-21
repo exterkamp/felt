@@ -62,6 +62,32 @@ export interface CardStyle {
   pixelRatio?: number;
   /** How dark its shadow is, 0-1. Default 1. Not part of any sheet. */
   shadow?: number;
+  /**
+   * Something the game prints on top of every face of this style: a badge,
+   * a stamp, a wash over the portrait. Part of the sheet, not of the card -
+   * cards that share an overlay's key share its sheet, so the key must name
+   * exactly what is drawn.
+   */
+  overlay?: FaceOverlay;
+}
+
+/** What an overlay is told about the face it is printed on. */
+export interface OverlayFace {
+  metrics: CardFaceMetrics;
+  suit: string;
+  rank: string;
+  /** Where the court portrait was drawn, centred, in card units. Absent on a pip card. */
+  court?: { x: number; y: number; width: number; height: number };
+}
+
+/**
+ * A picture printed over a face, in card units from the card's centre (the
+ * frame card-face.ts measures in). Painted once per face, into the sheet.
+ */
+export interface FaceOverlay {
+  /** Names the picture: two overlays with one key must draw the same. */
+  key: string;
+  paint(pen: CanvasRenderingContext2D, face: OverlayFace): void;
 }
 
 // The hairline edge, as a fraction of the paper. At the default near-white
@@ -97,6 +123,7 @@ export class FaceSheet {
   readonly courtWidth: number;
   readonly ratio: number;
   readonly theme: DeckTheme;
+  readonly overlay: FaceOverlay | undefined;
   /** Cards using it. At nought it is kept, not dropped - see CardSheets. */
   users = 0;
   /** The frame from which it may be warmed. */
@@ -127,10 +154,14 @@ export class FaceSheet {
     this.theme = style.theme;
     this.ink = style.ink;
     this.suitArt = style.suitArt;
+    this.overlay = style.overlay;
     this.pxW = Math.ceil(this.metrics.width * this.ratio);
     this.pxH = Math.ceil(this.metrics.height * this.ratio);
     const cellArea = (this.pxW + 4) * (this.pxH + 4);
-    this.wholeDeck = SUITS.length * RANKS.length * cellArea <= board.atlas.size * board.atlas.size;
+    // A sheet with an overlay is a handful of marked cards, not a deck: it
+    // paints only the faces that are shown.
+    this.wholeDeck = !style.overlay
+      && SUITS.length * RANKS.length * cellArea <= board.atlas.size * board.atlas.size;
   }
 
   /**
@@ -264,11 +295,13 @@ export class FaceSheet {
 
       const glyph = art.inkedSuit(suit, ink, lookup);
       const portrait = courtKey ? lookup.get(courtKey) : undefined;
+      let court: OverlayFace['court'];
       if (portrait) {
         // The portrait, sized off its own proportions; on the faces that frame
         // one, the rule round it, drawn over the art where a printed rule is.
         const rect = courtArtRect(metrics, { width: portrait.width, height: portrait.height });
         art.blit(pen, portrait, rect.x - rect.width / 2, rect.y - rect.height / 2, rect.width, rect.height);
+        court = { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
         if (metrics.court.cut === 'full') {
           pen.strokeStyle = colorCss(courtInk);
           pen.lineWidth = Math.max(1, metrics.width / 90);
@@ -298,6 +331,11 @@ export class FaceSheet {
       }
       corner(art, pen, metrics, rank, ink, glyph, false);
       if (metrics.corners === 2) corner(art, pen, metrics, rank, ink, glyph, true);
+      if (this.overlay) {
+        pen.save();
+        this.overlay.paint(pen as CanvasRenderingContext2D, { metrics, suit, rank, court });
+        pen.restore();
+      }
     };
   }
 }
@@ -369,6 +407,7 @@ export interface ResolvedStyle {
   courtWidth: number;
   ratio: number;
   suitArt: Readonly<Record<string, string>>;
+  overlay: FaceOverlay | undefined;
 }
 
 export function resolveStyle(style: CardStyle, boardRatio: number): ResolvedStyle {
@@ -390,6 +429,7 @@ export function resolveStyle(style: CardStyle, boardRatio: number): ResolvedStyl
       style.pixelRatio ?? boardRatio),
     ratio: style.pixelRatio ?? boardRatio,
     suitArt: style.suitArt ?? STANDARD_SUIT_ART,
+    overlay: style.overlay,
   };
 }
 
@@ -411,7 +451,8 @@ function faceFamily(s: ResolvedStyle): string {
   const p = s.palette;
   const court = `${p.ink}${p.gold}${p.red}${courtPaper(p)}${courtHighlight(p)}`.replace(/#/g, '');
   const art = Object.entries(s.suitArt).map(([k, v]) => `${k}=${v}`).join(',');
-  return `sheet|${m.face}|${s.paper.toString(16)}|${inks}|${court}|${s.theme}|${art}`;
+  const overlay = s.overlay ? `|over=${s.overlay.key}` : '';
+  return `sheet|${m.face}|${s.paper.toString(16)}|${inks}|${court}|${s.theme}|${art}${overlay}`;
 }
 
 function backKey(s: ResolvedStyle): string {

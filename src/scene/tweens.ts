@@ -179,6 +179,32 @@ export class Tweens {
     this.onWake?.();
   }
 
+  /**
+   * Calls back after `ms` on this clock - the tweens', so it holds while the
+   * board is paused and keeps time with every animation. `stop()` on what it
+   * answers cancels it.
+   */
+  delayedCall(ms: number, fn: () => void): Tween {
+    return this.add({ targets: {}, duration: 0, delay: ms, onComplete: () => fn() });
+  }
+
+  /**
+   * A number run from `from` to `to`, for an animation that is worked out
+   * rather than a property moved: `onUpdate` is handed the eased value.
+   */
+  counter(config: Omit<TweenConfig, 'targets' | 'onUpdate'> & {
+    from?: number; to?: number; onUpdate?: (value: number, tween: Tween) => void;
+  }): Tween {
+    const { from = 0, to = 1, onUpdate, ...rest } = config;
+    const box = { value: from };
+    return this.add({
+      ...rest,
+      targets: box,
+      value: to,
+      onUpdate: onUpdate ? (tween) => onUpdate(box.value, tween) : undefined,
+    });
+  }
+
   /** `add`, as a promise that resolves when it finishes. */
   to(targets: object | readonly object[], props: Omit<TweenConfig, 'targets'>): Promise<void> {
     return this.add({ ...props, targets }).promise;
@@ -196,6 +222,16 @@ export class Tweens {
 
   get count(): number {
     return this.active.length + this.tickers.size;
+  }
+
+  /**
+   * Stops everything: every tween where it is (promises resolve, onComplete
+   * does not run) and every ticker. For a game tearing its board down to
+   * start again on the same one.
+   */
+  clear(): void {
+    for (const tween of this.active.splice(0)) tween.stop();
+    this.tickers.clear();
   }
 
   /** Advances every tween by `ms`. Answers whether any are still running. */

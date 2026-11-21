@@ -5,6 +5,8 @@ import { Engine, EngineMember, engine as pageEngine } from '../runtime/engine.js
 import type { LifecycleEvent } from '../runtime/lifecycle.js';
 import { PickUp, PickUpOptions } from './pick-up.js';
 import { Node } from './node.js';
+import { Trail } from './trail.js';
+import { Group } from './group.js';
 import { Sprite, SpriteOptions } from './sprite.js';
 import { Tweens } from './tweens.js';
 
@@ -164,16 +166,30 @@ export class Board implements EngineMember {
   /** Times the page came back and the board drew itself again unasked. */
   resumes = 0;
   readonly parent: HTMLElement;
-  readonly width: number;
-  readonly height: number;
-  readonly pixelRatio: number;
+  /** Its size in units and its density. Changed only by `resize`. */
+  width: number;
+  height: number;
+  pixelRatio: number;
   readonly atlas: Atlas;
   readonly tweens = new Tweens();
   /** Camera to table, in units. Infinity on a flat board. */
   distance: number;
   localLens: boolean;
-  readonly vanishX: number;
-  readonly vanishY: number;
+  vanishX: number;
+  vanishY: number;
+  /**
+   * Stopped: tweens, tickers and `update` handlers do not advance, so every
+   * animation holds where it is. It still draws whatever changes.
+   */
+  get paused(): boolean { return this._paused; }
+  set paused(v: boolean) {
+    if (v === this._paused) return;
+    this._paused = v;
+    // Asleep while it was stopped: the animations it held want frames again.
+    if (!v) this.wake();
+  }
+  private _paused = false;
+  private fov: number;
   /** Anything the art layer wants to hang off the board. */
   readonly services = new Map<string, unknown>();
   /** See `BoardOptions.waitForArt`. */
@@ -182,6 +198,7 @@ export class Board implements EngineMember {
   readonly createdAt = performance.now();
 
   private readonly items: Node[] = [];
+  private _trail: Trail | undefined;
   private sorted = true;
   private rendering = false;
   private dirty = true;
@@ -211,7 +228,8 @@ export class Board implements EngineMember {
     this.width = options.width;
     this.height = options.height;
     this.pixelRatio = options.pixelRatio ?? window.devicePixelRatio ?? 1;
-    this.distance = lensDistance(options.fov ?? 45, options.height);
+    this.fov = options.fov ?? 45;
+    this.distance = lensDistance(this.fov, options.height);
     this.localLens = (options.lens ?? 'local') === 'local';
     this.waitForArt = options.waitForArt ?? true;
     this.vanishX = options.width / 2;
@@ -308,8 +326,10 @@ export class Board implements EngineMember {
   private rebuild(): void {
     const old = this._canvas;
     const fresh = this.makeCanvas();
-    fresh.style.width = old.style.width;
-    fresh.style.height = old.style.height;
+    // Everything the page put on the old one - its fitted size, and anything a
+    // game styled it with, a picture of the table behind a transparent board -
+    // goes over to the new.
+    fresh.style.cssText = old.style.cssText;
     let renderer: Renderer;
     try {
       renderer = new Renderer(fresh, this.atlas, {
@@ -343,6 +363,7 @@ export class Board implements EngineMember {
    * Flat, picked-up cards stay on the felt and flicks stay in 2D.
    */
   setFov(fov: number): this {
+    this.fov = fov;
     this.distance = lensDistance(fov, this.height);
     this.touch();
     return this;
@@ -374,6 +395,28 @@ export class Board implements EngineMember {
     if (!(scale > 0) || !Number.isFinite(scale)) return;
     this.canvas.style.width = `${Math.floor(this.width * scale)}px`;
     this.canvas.style.height = `${Math.floor(this.height * scale)}px`;
+  }
+
+  /**
+   * A new size in units, and optionally a new density. The canvas is made
+   * again at that size and fitted; nothing on the board moves. Pictures
+   * painted at the old density stay as they were - a game that changes it
+   * builds its cards again, and the old sheets are given up as the atlas
+   * needs the room.
+   */
+  resize(width: number, height: number, pixelRatio = this.pixelRatio): void {
+    if (width === this.width && height === this.height && pixelRatio === this.pixelRatio) return;
+    this.width = width;
+    this.height = height;
+    this.pixelRatio = pixelRatio;
+    this.vanishX = width / 2;
+    this.vanishY = height / 2;
+    this.distance = lensDistance(this.fov, height);
+    this._canvas.width = Math.round(width * pixelRatio);
+    this._canvas.height = Math.round(height * pixelRatio);
+    this.fit();
+    this.dirty = false;
+    this.touch();
   }
 
   // --- the list ------------------------------------------------------------
@@ -428,6 +471,11 @@ export class Board implements EngineMember {
   }
 
   // --- pictures ------------------------------------------------------------
+
+  /** A frame nodes can be laid out in, turned and scaled as one. */
+  group(options: ConstructorParameters<typeof Group>[1] = {}): Group {
+    return new Group(this, options);
+  }
 
   /** A sprite showing an atlas region. */
   image(region: Parameters<Atlas['release']>[0], options: SpriteOptions = {}): Sprite {
@@ -650,6 +698,21 @@ export class Board implements EngineMember {
     };
   }
 
+  /**
+   * The board's trail: a picture under everything that nodes are stamped
+   * into and that stays until cleared. Made on first ask; one per board.
+   */
+  trail(): Trail {
+    if (!this._trail || this._trail.isDestroyed) this._trail = new Trail(this);
+    return this._trail;
+  }
+
+  /** Let go of the trail's picture. Called by Trail.destroy. */
+  dropTrail(): void {
+    this._trail = undefined;
+    this.renderer.dropTrail();
+  }
+
   /** Milliseconds since the board started, as the loop sees it. */
   get now(): number {
     return this.time;
@@ -670,9 +733,9 @@ export class Board implements EngineMember {
     const started = performance.now();
     this.time += delta;
 
-    const updating = (this.handlers.get('update')?.size ?? 0) > 0;
+    const updating = !this.paused && (this.handlers.get('update')?.size ?? 0) > 0;
     if (updating) this.emit('update', this.time, delta);
-    const tweening = this.tweens.update(delta);
+    const tweening = this.paused ? false : this.tweens.update(delta);
     // Before the dirty check, so that what this paints lands in this frame
     // rather than asking for another one.
     for (const run of this.beforeFrame) run();
@@ -725,7 +788,7 @@ export class Board implements EngineMember {
       vanishX: this.vanishX,
       vanishY: this.vanishY,
       local: this.localLens,
-    }, this.background);
+    }, this.background, this._trail?.request);
     this.frames++;
     this.emit('render');
   }

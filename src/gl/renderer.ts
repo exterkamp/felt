@@ -1,6 +1,6 @@
 import { Atlas } from './atlas.js';
 import {
-  CARD_ROWS, INSTANCE_FLOATS, INSTANCE_FRAGMENT, INSTANCE_VERTEX,
+  CARD_ROWS, INSTANCE_FLOATS, INSTANCE_FRAGMENT, INSTANCE_VERTEX, TRAIL_FRAGMENT, TRAIL_VERTEX,
 } from './shaders.js';
 
 // The renderer: one texture, one instanced draw.
@@ -59,6 +59,21 @@ function uniforms(gl: WebGL2RenderingContext, program: WebGLProgram, names: stri
 const PROJECTION_UNIFORMS = ['u_board', 'u_distance', 'u_vanish', 'u_local', 'u_atlas'];
 
 
+/**
+ * What the board asks of the trail each frame: whether there is one, the
+ * stamps to add to it since the last frame, and whether to wipe it first.
+ */
+export interface TrailRequest {
+  on: boolean;
+  /** Instances, INSTANCE_FLOATS each, written when they were stamped. */
+  stamps: Float32Array;
+  count: number;
+  bowed: boolean;
+  clear: boolean;
+  /** 0-1, how strongly the whole trail is drawn. */
+  alpha: number;
+}
+
 export class Renderer {
   readonly gl: WebGL2RenderingContext;
   // Everything below is the GPU's, and a lost context takes all of it with
@@ -96,6 +111,18 @@ export class Renderer {
   uploads = 0;
   uploadedPixels = 0;
   readonly maxTextureLayers: number;
+  /** Whether the page shows through: what an additive sprite has to leave in alpha. */
+  private readonly transparent: boolean;
+  /** The trail's own texture and framebuffer, made when first wanted. */
+  private trailTexture: WebGLTexture | null = null;
+  private trailFramebuffer: WebGLFramebuffer | null = null;
+  private trailWidth = 0;
+  private trailHeight = 0;
+  private trailProgram!: WebGLProgram;
+  private trailUniforms!: Uniforms;
+  private trailVao!: WebGLVertexArrayObject;
+  private stampBuffer!: WebGLBuffer;
+  private stampCapacity = 0;
 
   constructor(readonly canvas: HTMLCanvasElement, readonly atlas: Atlas,
     options: { transparent?: boolean; generation?: number } = {}) {
@@ -109,6 +136,7 @@ export class Renderer {
     });
     if (!gl) throw new Error('felt: this browser has no WebGL2');
     this.gl = gl;
+    this.transparent = options.transparent ?? false;
     this.maxTextureLayers = gl.getParameter(gl.MAX_ARRAY_TEXTURE_LAYERS) as number;
     // A renderer made to replace a dead one counts on from it.
     this.generation = options.generation ?? 0;
@@ -129,6 +157,13 @@ export class Renderer {
   restore(): void {
     this.texture = null;
     this.textureLayers = 0;
+    // The trail went with the context. It is a picture of where cards have
+    // been, and is not painted back: it starts again empty.
+    this.trailTexture = null;
+    this.trailFramebuffer = null;
+    this.trailWidth = 0;
+    this.trailHeight = 0;
+    this.stampCapacity = 0;
     this.setup();
   }
 
@@ -136,7 +171,7 @@ export class Renderer {
     const gl = this.gl;
     this.generation++;
     this.cardProgram = link(gl, INSTANCE_VERTEX, INSTANCE_FRAGMENT);
-    this.cardUniforms = uniforms(gl, this.cardProgram, [...PROJECTION_UNIFORMS, 'u_frontFacing']);
+    this.cardUniforms = uniforms(gl, this.cardProgram, [...PROJECTION_UNIFORMS, 'u_frontFacing', 'u_additiveAlpha']);
 
     // The card: two columns and CARD_ROWS rows of quads, unit square.
     const grid: number[] = [];
@@ -173,13 +208,25 @@ export class Renderer {
     }
     this.pointInstances(0);
     gl.bindVertexArray(null);
+
+    this.stampBuffer = gl.createBuffer()!;
+    this.trailProgram = link(gl, TRAIL_VERTEX, TRAIL_FRAGMENT);
+    this.trailUniforms = uniforms(gl, this.trailProgram, ['u_trail', 'u_alpha']);
+    this.trailVao = gl.createVertexArray()!;
+    gl.bindVertexArray(this.trailVao);
+    const corners = gl.createBuffer()!;
+    gl.bindBuffer(gl.ARRAY_BUFFER, corners);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1]), gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    gl.bindVertexArray(null);
   }
 
   /** Points the eight instance attributes at the run starting at `first`. */
-  private pointInstances(first: number): void {
+  private pointInstances(first: number, buffer: WebGLBuffer = this.instanceBuffer): void {
     const gl = this.gl;
     const stride = INSTANCE_FLOATS * 4;
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.instanceBuffer);
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
     for (let i = 1; i <= 8; i++) {
       gl.vertexAttribPointer(i, 4, gl.FLOAT, false, stride, first * stride + (i - 1) * 16);
     }
@@ -278,13 +325,111 @@ export class Renderer {
     gl.uniform1i(u['u_atlas'], 0);
   }
 
+  /** The trail texture at the canvas's size, made or remade (empty) as needed. */
+  private ensureTrail(): boolean {
+    const gl = this.gl;
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+    if (this.trailTexture && this.trailWidth === w && this.trailHeight === h) return false;
+    if (this.trailTexture) gl.deleteTexture(this.trailTexture);
+    if (this.trailFramebuffer) gl.deleteFramebuffer(this.trailFramebuffer);
+    this.trailTexture = gl.createTexture()!;
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, this.trailTexture);
+    gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, w, h);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.activeTexture(gl.TEXTURE0);
+    this.trailFramebuffer = gl.createFramebuffer()!;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.trailFramebuffer);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.trailTexture, 0);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    this.trailWidth = w;
+    this.trailHeight = h;
+    return true;
+  }
+
+  /** Adds this frame's stamps to the trail: drawn into it, and kept. */
+  private drawStamps(trail: TrailRequest, camera: FrameCamera): void {
+    const gl = this.gl;
+    this.ensureTrail();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.trailFramebuffer);
+    gl.viewport(0, 0, this.trailWidth, this.trailHeight);
+    if (trail.clear) {
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      trail.clear = false;
+    }
+    if (trail.count > 0) {
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+      const used = trail.count * INSTANCE_FLOATS;
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.stampBuffer);
+      if (this.stampCapacity < used) {
+        gl.bufferData(gl.ARRAY_BUFFER, trail.stamps.byteLength, gl.DYNAMIC_DRAW);
+        this.stampCapacity = trail.stamps.length;
+      }
+      gl.bufferSubData(gl.ARRAY_BUFFER, 0, trail.stamps, 0, used);
+      gl.useProgram(this.cardProgram);
+      this.setProjection(this.cardUniforms, camera);
+      gl.frontFace(gl.CW);
+      gl.uniform1f(this.cardUniforms['u_frontFacing'], 1);
+      // The trail is a picture drawn later over the board: always keep alpha.
+      gl.uniform1f(this.cardUniforms['u_additiveAlpha'], 1);
+      gl.bindVertexArray(this.cardVao);
+      this.pointInstances(0, this.stampBuffer);
+      if (trail.bowed) gl.drawElementsInstanced(gl.TRIANGLES, this.indexCount, gl.UNSIGNED_SHORT, 0, trail.count);
+      else gl.drawElementsInstanced(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, this.quadOffset, trail.count);
+      this.drawCalls++;
+      gl.bindVertexArray(null);
+      gl.frontFace(gl.CCW);
+      trail.count = 0;
+      trail.bowed = false;
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  }
+
+  /** Lays the trail down over the cleared canvas, under everything. */
+  private drawTrail(trail: TrailRequest): void {
+    const gl = this.gl;
+    gl.useProgram(this.trailProgram);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, this.trailTexture);
+    gl.uniform1i(this.trailUniforms['u_trail'], 1);
+    gl.uniform1f(this.trailUniforms['u_alpha'], trail.alpha);
+    gl.bindVertexArray(this.trailVao);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    this.drawCalls++;
+    gl.bindVertexArray(null);
+    gl.activeTexture(gl.TEXTURE0);
+  }
+
+  /** Throws the trail away, texture and all. */
+  dropTrail(): void {
+    const gl = this.gl;
+    if (gl.isContextLost()) return;
+    if (this.trailTexture) gl.deleteTexture(this.trailTexture);
+    if (this.trailFramebuffer) gl.deleteFramebuffer(this.trailFramebuffer);
+    this.trailTexture = null;
+    this.trailFramebuffer = null;
+    this.trailWidth = 0;
+    this.trailHeight = 0;
+  }
+
   /** Draws one frame: everything in `items`, back to front. */
-  frame(items: readonly DrawItem[], camera: FrameCamera, background: [number, number, number, number]): void {
+  frame(items: readonly DrawItem[], camera: FrameCamera, background: [number, number, number, number],
+    trail?: TrailRequest): void {
     const gl = this.gl;
     if (gl.isContextLost()) return;
     this.ensureLayers(this.atlas.pages.length);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.texture);
+    this.drawCalls = 0;
+    if (trail?.on) this.drawStamps(trail, camera);
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
     gl.clearColor(background[0] * background[3], background[1] * background[3],
       background[2] * background[3], background[3]);
@@ -292,6 +437,7 @@ export class Renderer {
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     gl.disable(gl.CULL_FACE);
+    if (trail?.on && this.trailTexture) this.drawTrail(trail);
 
     // Every instance, into one buffer.
     // Room for every item and a shadow for each, so no write can overrun.
@@ -311,7 +457,6 @@ export class Renderer {
       }
     }
     this.instanceCount = count;
-    this.drawCalls = 0;
     this.flatDraws = 0;
 
     this.instanceTurn = (this.instanceTurn + 1) % this.instanceBuffers.length;
@@ -331,6 +476,7 @@ export class Renderer {
       // the camera; the shader shows the back on the other.
       gl.frontFace(gl.CW);
       gl.uniform1f(this.cardUniforms['u_frontFacing'], 1);
+      gl.uniform1f(this.cardUniforms['u_additiveAlpha'], this.transparent ? 1 : 0);
       gl.bindVertexArray(this.cardVao);
       this.pointInstances(0);
       if (bowed) {
@@ -350,6 +496,9 @@ export class Renderer {
     // A lost context has nothing left to free, and says so by erroring.
     if (gl.isContextLost()) return;
     if (this.texture) gl.deleteTexture(this.texture);
+    this.dropTrail();
+    gl.deleteBuffer(this.stampBuffer);
+    gl.deleteProgram(this.trailProgram);
     for (const buffer of this.instanceBuffers) gl.deleteBuffer(buffer);
     gl.deleteVertexArray(this.cardVao);
     gl.deleteProgram(this.cardProgram);

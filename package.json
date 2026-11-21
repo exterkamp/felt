@@ -1,6 +1,6 @@
 {
   "name": "@exterkamp/felt",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A WebGL2 engine for card games and nothing else: one instanced draw for every card on the table, flat or bent, flipped or thrown.",
   "license": "CC0-1.0",
   "author": "Shane Exterkamp",

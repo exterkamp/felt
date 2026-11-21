@@ -117,6 +117,7 @@ precision highp float;
 precision highp sampler2DArray;
 uniform sampler2DArray u_atlas;
 uniform float u_frontFacing; // 1 if the GPU's front face is the camera-facing one
+uniform float u_additiveAlpha; // 1 where the page composites the canvas: see the sprite branch
 
 in vec2 v_local;
 flat in vec4 v_front;
@@ -200,6 +201,14 @@ void main() {
     vec4 texel = texture(u_atlas, vec3(uv, layer));
     colour = vec4(texel.rgb * v_tint, texel.a) * v_alpha;
     if (colour.a <= 0.0) discard;
+    // Premultiplied, so an alpha taken away leaves the colour to be added:
+    // the blend is ONE, ONE_MINUS_SRC_ALPHA, and at nought that is a sum.
+    // On a transparent board the page composites the canvas, and a pixel of
+    // colour with no alpha is not a colour it will show: there the light
+    // keeps as much alpha as its brightest channel - still light on a dark
+    // cloth, and a pixel the page can draw.
+    float light = max(colour.r, max(colour.g, colour.b));
+    colour.a = mix(colour.a, light * u_additiveAlpha, v_layers.w);
     return;
   }
 
@@ -254,5 +263,28 @@ void main() {
   float alpha = card.a + shadow * (1.0 - card.a);
   colour = vec4(card.rgb, alpha) * v_alpha;
   if (colour.a <= 0.002) discard;
+}
+`;
+
+// The trail: one full-board picture that cards are stamped into and never
+// rubbed out, drawn under everything else (see Trail in scene/trail.ts).
+export const TRAIL_VERTEX = /* glsl */ `#version 300 es
+precision highp float;
+layout(location = 0) in vec2 a_corner;
+out vec2 v_uv;
+void main() {
+  v_uv = a_corner;
+  gl_Position = vec4(a_corner * 2.0 - 1.0, 0.0, 1.0);
+}
+`;
+
+export const TRAIL_FRAGMENT = /* glsl */ `#version 300 es
+precision highp float;
+uniform sampler2D u_trail;
+uniform float u_alpha;
+in vec2 v_uv;
+out vec4 colour;
+void main() {
+  colour = texture(u_trail, v_uv) * u_alpha;
 }
 `;
